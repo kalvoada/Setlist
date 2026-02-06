@@ -1,6 +1,10 @@
 import SwiftUI
 import SwiftData
 
+// TODO
+// Design
+// Add post - add song/playlist/album
+
 struct FeedView: View {
     @Query(sort: \Post.username) private var posts: [Post]
         

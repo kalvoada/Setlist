@@ -1,6 +1,14 @@
 import SwiftUI
 import SwiftData
 
+// TODO
+// Design
+// Options - edit profile/account
+// Share profile
+// Add post
+// Bio
+// Trackers - posts, friends, follows
+
 struct ProfileView: View {
     @Query private var users: [User]
     @Query private var allPosts: [Post]

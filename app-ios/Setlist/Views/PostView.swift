@@ -1,5 +1,12 @@
 import SwiftUI
 
+// TODO
+// Design
+// Comments
+// Likes
+// Share
+// Content: Spotify/AppleMusic - Songs/Albums/Playlists
+
 struct PostView: View {
     let post: Post
     
@@ -16,8 +23,6 @@ struct PostView: View {
                 Image(systemName: "heart")
                 Text("\(post.likes)")
                 Spacer()
-                
-                //TODO
             }
             .padding(.top, 4)
             .foregroundColor(.secondary)
