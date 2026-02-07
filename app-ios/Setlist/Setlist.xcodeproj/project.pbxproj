@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		C24B5A982F367D4E009F8D69 /* debug.swift in Sources */ = {isa = PBXBuildFile; fileRef = C24B5A972F367D48009F8D69 /* debug.swift */; };
 		C29724762F350FB5009BFD38 /* SetlistApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = C29724752F350FB5009BFD38 /* SetlistApp.swift */; };
 		C29724782F350FB5009BFD38 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C29724772F350FB5009BFD38 /* ContentView.swift */; };
 		C297247D2F350FB6009BFD38 /* Preview Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = C297247C2F350FB6009BFD38 /* Preview Assets.xcassets */; };
@@ -20,6 +21,7 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		C24B5A972F367D48009F8D69 /* debug.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = debug.swift; sourceTree = "<group>"; };
 		C29724722F350FB5009BFD38 /* Setlist.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Setlist.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		C29724752F350FB5009BFD38 /* SetlistApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SetlistApp.swift; sourceTree = "<group>"; };
 		C29724772F350FB5009BFD38 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
@@ -76,6 +78,7 @@
 		C29724842F35109F009BFD38 /* Views */ = {
 			isa = PBXGroup;
 			children = (
+				C24B5A972F367D48009F8D69 /* debug.swift */,
 				C29724992F352521009BFD38 /* PostView.swift */,
 				C29724922F351B0A009BFD38 /* ProfileView.swift */,
 				C297248F2F351982009BFD38 /* FeedView.swift */,
@@ -202,6 +205,7 @@
 				C29724782F350FB5009BFD38 /* ContentView.swift in Sources */,
 				C29724762F350FB5009BFD38 /* SetlistApp.swift in Sources */,
 				C29724972F35226E009BFD38 /* Post.swift in Sources */,
+				C24B5A982F367D4E009F8D69 /* debug.swift in Sources */,
 				C29724962F352266009BFD38 /* SampleData.swift in Sources */,
 				C297249A2F352528009BFD38 /* PostView.swift in Sources */,
 				C29724902F351988009BFD38 /* FeedView.swift in Sources */,

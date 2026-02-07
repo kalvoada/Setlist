@@ -15,6 +15,11 @@ struct ContentView: View {
             ProfileView().tabItem {
                 Label("Profile", systemImage: "person")
             }
+            
+            // FastAPI debug
+            //DebugView().tabItem {
+            //    Label("debug", systemImage: "plus")
+            //}
         }
     }
 }
