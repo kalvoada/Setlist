@@ -9,22 +9,12 @@ struct ContentView: View {
     var body: some View {
         TabView {
             FeedView().tabItem {
-                    Label("Feed", systemImage: "house")
-                }
+                Label("Feed", systemImage: "house")
+            }
             
             ProfileView().tabItem {
                 Label("Profile", systemImage: "person")
             }
-            
-            // FastAPI debug
-            //DebugView().tabItem {
-            //    Label("debug", systemImage: "plus")
-            //}
         }
     }
-}
-
-#Preview {
-    ContentView()
-        .modelContainer(SampleData.shared.modelContainer)
 }

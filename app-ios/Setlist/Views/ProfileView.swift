@@ -10,53 +10,54 @@ import SwiftData
 // Trackers - posts, friends, follows
 
 struct ProfileView: View {
-    @Query private var users: [User]
-    @Query private var allPosts: [Post]
+    @State private var user: User?
+    @StateObject private var apiService = APIService()
+    
+    // Hardcoding User ID 1 for now to simulate "Me"
+    let currentUserId = 1
     
     var body: some View {
-        if let user = users.first {
-            
-            VStack(spacing: 20) {
-                Image(systemName: "person.circle.fill")
-                    .resizable()
-                    .frame(width: 100, height: 100)
-                    .foregroundColor(.gray)
-                
-                Text((user.name))
-                    .font(.title2)
-                    .fontWeight(.bold)
-                
-                Text("bio?")
-                    .font(.subheadline)
-                    .foregroundColor(.secondary)
-                
-                Divider()
-                
-         
-                
-                List {
-                    ForEach(postsFor(user: user)) { post in
-                        PostView(post: post)
+        NavigationView {
+            VStack {
+                if let user = user {
+                    VStack(spacing: 16) {
+                        Image(systemName: "person.crop.circle.fill")
+                            .resizable()
+                            .frame(width: 100, height: 100)
+                            .foregroundColor(.gray)
+                        
+                        Text(user.username)
+                            .font(.largeTitle)
+                            .bold()
+                        
+                        Text(user.bio ?? "No bio available")
+                            .foregroundColor(.secondary)
+                        
+                        Divider()
+                        
+                        if let posts = user.posts {
+                            List(posts) { post in
+                                Text(post.content)
+                            }
+                        }
                     }
+                    .padding()
+                } else {
+                    ProgressView("Loading Profile...")
                 }
-                .listStyle(.plain)
-                
-                Spacer()
             }
-            .padding()
-        }
-        else {
-            Text("No users")
+            .navigationTitle("Profile")
+            .task {
+                await loadProfile()
+            }
         }
     }
     
-    
-    private func postsFor(user: User) -> [Post] {
-        return allPosts.filter { $0.username == user.name }
+    func loadProfile() async {
+        do {
+            self.user = try await apiService.fetchUser(id: currentUserId)
+        } catch {
+            print("Error fetching profile: \(error)")
+        }
     }
-}
-
-#Preview {
-    ProfileView()
-        .modelContainer(SampleData.shared.modelContainer)
 }

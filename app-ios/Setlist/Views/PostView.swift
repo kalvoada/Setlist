@@ -12,20 +12,16 @@ struct PostView: View {
     
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("user: \(post.username)")
-                .font(.headline)
-                .foregroundColor(.blue)
-            
+            HStack {
+                Image(systemName: "person.circle.fill")
+                    .resizable()
+                    .frame(width: 30, height: 30)
+                    .foregroundColor(.blue)
+                Text("User \(post.user_id)") // TODO get the user name
+                    .font(.headline)
+            }
             Text(post.content)
                 .font(.body)
-            
-            HStack {
-                Image(systemName: "heart")
-                Text("\(post.likes)")
-                Spacer()
-            }
-            .padding(.top, 4)
-            .foregroundColor(.secondary)
         }
         .padding(.vertical, 8)
     }

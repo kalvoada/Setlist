@@ -1,17 +1,12 @@
-//
-//  SetlistApp.swift
-//  Setlist
-//
-//  Created by Adam Kalvoda on 05.02.2026.
-//
-
 import SwiftUI
 
 @main
 struct SetlistApp: App {
+    @StateObject private var apiService = APIService()
+    
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            ContentView().environmentObject(apiService)
         }
     }
 }

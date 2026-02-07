@@ -1,14 +1,23 @@
 import Foundation
 import SwiftUI
 
-class APIService: ObservableObject {
-    static let shared = APIService()
 
+protocol URLSessionProtocol {
+    func data(from url: URL) async throws -> (Data, URLResponse)
+}
+
+extension URLSession: URLSessionProtocol {}
+
+class APIService: ObservableObject {
     let baseURL = "http://127.0.0.1:8000"
+    let session: URLSessionProtocol
+    
+    init(session: URLSessionProtocol = URLSession.shared) {
+        self.session = session
+    }
     
     func fetchPosts() async throws -> [Post] {
         let endpoint = "\(baseURL)/posts/"
-        
         
         guard let url = URL(string: endpoint) else {
             return []

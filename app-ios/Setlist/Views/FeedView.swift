@@ -1,25 +1,32 @@
 import SwiftUI
-import SwiftData
 
 // TODO
 // Design
 // Add post - add song/playlist/album
-
 struct FeedView: View {
-    @Query(sort: \Post.username) private var posts: [Post]
-        
+    @StateObject private var apiService = APIService()
+    @State private var posts: [Post] = []
+    
     var body: some View {
-        NavigationStack {
+        NavigationView {
             List(posts) { post in
                 PostView(post: post)
             }
-            .navigationTitle("Setlist Feed")
-            .listStyle(.plain)
+            .navigationTitle("Feed")
+            .refreshable {
+                await loadPosts()
+            }
+            .task {
+                await loadPosts()
+            }
         }
     }
-}
-
-#Preview {
-    FeedView()
-        .modelContainer(SampleData.shared.modelContainer)
+    
+    func loadPosts() async {
+        do {
+            self.posts = try await apiService.fetchPosts()
+        } catch {
+            print("Error fetching posts: \(error)")
+        }
+    }
 }
