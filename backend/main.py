@@ -1,13 +1,16 @@
 from fastapi import FastAPI
-from pydantic import BaseModel
-from typing import List
+from src.database.database import engine, Base
+from src.routers import users, posts
+
+# Create database tables
+Base.metadata.create_all(bind=engine)
 
 app = FastAPI()
 
-@app.get("/")
-async def root():
-    return {"message": "Hello World"}
+# Include the routers
+app.include_router(users.router)
+app.include_router(posts.router)
 
-@app.get("/hello")
-async def hello():
-    return {"message": "FastAPI debug something message"}
+@app.get("/")
+def root():
+    return {"message": "Welcome to the API"}
