@@ -3,19 +3,26 @@ import XCTest
 
 // Mock Session
 class MockURLSession: URLSessionProtocol {
-    var result: Result<(Data, URLResponse), Error>?
     
+    var result: Result<(Data, URLResponse), Error>?
+    var requestHandler: ((URL) throws -> (Data, URLResponse))?
+        
     func data(from url: URL) async throws -> (Data, URLResponse) {
-        guard let result = result else {
-            fatalError("Result not set in MockURLSession")
+    
+        if let handler = requestHandler {
+            return try handler(url)
         }
         
-        switch result {
-        case .success(let data):
-            return data
-        case .failure(let error):
-            throw error
+        if let result = result {
+            switch result {
+            case .success(let data):
+                return data
+            case .failure(let error):
+                throw error
+            }
         }
+        
+        fatalError("MockURLSession error: You must set 'result' or 'requestHandler' before running the test.")
     }
 }
 
@@ -41,6 +48,7 @@ final class APIServiceTests: XCTestCase {
     // MARK: - Tests
     
     func testFetchPosts_Success() async throws {
+        
         let jsonString =
         """
         [
@@ -104,5 +112,42 @@ final class APIServiceTests: XCTestCase {
         } catch {
             XCTFail("Wrong error: \(error)")
         }
+    }
+    
+    func testTwoUsers_Fetch() async throws {
+ 
+        let user1Data = """
+        { "id": 1, "username": "Alice", "bio": "I am User 1" }
+        """.data(using: .utf8)!
+        
+        let user2Data = """
+        { "id": 2, "username": "Bob", "bio": "I am User 2" }
+        """.data(using: .utf8)!
+        
+        // Configure the Mock to check the URL and return the right person
+        mockSession.requestHandler = { url in
+            let response = HTTPURLResponse(url: url, statusCode: 200, httpVersion: nil, headerFields: nil)!
+            
+            if url.absoluteString.contains("/users/1") {
+                return (user1Data, response)
+            } else if url.absoluteString.contains("/users/2") {
+                return (user2Data, response)
+            } else {
+                throw URLError(.fileDoesNotExist) // Fail if URL is weird
+            }
+        }
+        
+
+        async let fetchUser1 = service.fetchUser(id: 1)
+        async let fetchUser2 = service.fetchUser(id: 2)
+        
+        // Wait for both to finish
+        let (user1, user2) = try await (fetchUser1, fetchUser2)
+        
+        XCTAssertEqual(user1.username, "Alice")
+        XCTAssertEqual(user1.id, 1)
+        
+        XCTAssertEqual(user2.username, "Bob")
+        XCTAssertEqual(user2.id, 2)
     }
 }
