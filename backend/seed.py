@@ -16,14 +16,21 @@ print("Creating users...")
 user1 = DBUser(username="peter paul", bio="El prezidente")
 user2 = DBUser(username="peter boujon", bio="Peter cheater")
 user3 = DBUser(username="Dušan knop", bio="")
+user4 = DBUser(username="kalvoada", bio="")
+user5 = DBUser(username="Džeminýj", bio="")
+user6 = DBUser(username="Pan pastelka", bio="")
+user7 = DBUser(username="Pan Rampouch", bio="")
+user8 = DBUser(username="Velký černý dítě", bio="")
+user9 = DBUser(username="někdo", bio="")
+user10 = DBUser(username="Bažant", bio="")
 
-db.add_all([user1, user2, user3])
+users = [user1, user2, user3, user4, user5, user6, user7, user8, user9, user10]
+db.add_all(users)
 db.commit()
 
-# Refresh to ensure they have IDs assigned by the database
-db.refresh(user1)
-db.refresh(user2)
-db.refresh(user3)
+for user in users:
+    db.refresh(user)
+    print(f"Refreshed: {user.username} (ID: {user.id})")
 
 # 4. CREATE MOCK POSTS
 print("Creating posts...")
@@ -33,7 +40,13 @@ posts = [
     DBPost(content="džeah", user_id=user2.id),
     DBPost(content="", user_id=user2.id),
     DBPost(content="Gugugaga", user_id=user3.id),
-    DBPost(content="feinfeinfeinfeinfeinfeinfein", user_id=user3.id)
+    DBPost(content="feinfeinfeinfeinfeinfeinfein", user_id=user4.id),
+    DBPost(content="feinfeinfeinfeinfeinfeinfein", user_id=user9.id),
+    DBPost(content="feinfeinfeinfeinfeinfeinfein", user_id=user9.id),
+    DBPost(content="feinfeinfeinfeinfeinfeinfein", user_id=user5.id),
+    DBPost(content="feinfeinfeinfeinfeinfeinfein", user_id=user3.id),
+    DBPost(content="feinfeinfeinfeinfeinfeinfein", user_id=user3.id),
+    DBPost(content="feinfeinfeinfeinfeinfeinfein", user_id=user8.id)
 ]
 
 db.add_all(posts)
