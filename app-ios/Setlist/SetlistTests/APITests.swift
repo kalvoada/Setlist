@@ -150,4 +150,34 @@ final class APIServiceTests: XCTestCase {
         XCTAssertEqual(user2.username, "Bob")
         XCTAssertEqual(user2.id, 2)
     }
+    
+    func testSearchUsers_Success() async throws {
+        
+            let data = """
+            [
+                { "id": 5, "username": "SearchMatch", "bio": "I was found" },
+                { "id": 6, "username": "AnotherMatch", "bio": "Me too" }
+            ]
+            """.data(using: .utf8)!
+        
+            mockSession.requestHandler = { url in
+                // Verify the endpoint is correct
+                XCTAssertTrue(url.path.contains("/users/search"), "URL should point to the search endpoint")
+                
+                // Verify the query parameter is attached correctly
+                let components = URLComponents(url: url, resolvingAgainstBaseURL: false)
+                let queryItem = components?.queryItems?.first(where: { $0.name == "q" })
+                
+                XCTAssertEqual(queryItem?.value, "swift", "Query parameter 'q' should match the input")
+                
+                let response = HTTPURLResponse(url: url, statusCode: 200, httpVersion: nil, headerFields: nil)!
+                return (data, response)
+            }
+            
+            let users = try await service.searchUsers(query: "swift")
+            
+            XCTAssertEqual(users.count, 2)
+            XCTAssertEqual(users.first?.username, "SearchMatch")
+            XCTAssertEqual(users.last?.id, 6)
+        }
 }

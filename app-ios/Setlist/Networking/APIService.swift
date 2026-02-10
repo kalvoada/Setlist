@@ -60,6 +60,31 @@ class APIService: ObservableObject {
             throw APIError.invalidData
         }
     }
+    
+    func searchUsers(query: String) async throws -> [User] {
+        var urlComponents = URLComponents(string: "\(baseURL)/users/search")
+        
+        urlComponents?.queryItems = [
+            URLQueryItem(name: "q", value: query)
+        ]
+        
+        guard let url = urlComponents?.url else {
+            throw APIError.invalidURL
+        }
+        
+        let (data, response) = try await session.data(from: url)
+        
+        guard let response = response as? HTTPURLResponse, response.statusCode == 200 else {
+            throw APIError.invalidResponse
+        }
+        
+        do {
+            let decoder = JSONDecoder()
+            return try decoder.decode([User].self, from: data)
+        } catch {
+            throw APIError.invalidData
+        }
+    }
 }
 
 enum APIError: Error {
