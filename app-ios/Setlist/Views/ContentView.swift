@@ -2,7 +2,8 @@ import SwiftUI
 
 // TODO
 // Design
-// search (users) - later it will show recomended songs/albums
+// create a view for other users profile
+// search  -  recomended songs/albums
 // separate tab for events
 
 struct ContentView: View {
@@ -10,6 +11,10 @@ struct ContentView: View {
         TabView {
             FeedView().tabItem {
                 Label("Feed", systemImage: "house")
+            }
+            
+            SearchView().tabItem {
+                Label("Search", systemImage: "magnifyingglass")
             }
             
             ProfileView().tabItem {
