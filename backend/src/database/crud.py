@@ -22,3 +22,7 @@ def create_post(db: Session, post: schemas.PostCreate):
     db.commit()
     db.refresh(db_post)
     return db_post
+
+# -- SEARCH CRUD ---
+def search_users(db: Session, query: str):
+    return db.query(models.DBUser).filter(models.DBUser.username.contains(query)).all()
