@@ -1,26 +1,47 @@
 import SwiftUI
 
-// TODO
-// Design
-// Add post - add song/playlist/album
+// TODO:
+// Add post
 struct FeedView: View {
     @StateObject private var apiService = APIService()
     @State private var posts: [Post] = []
     
     var body: some View {
-        NavigationView {
+        NavigationStack {
             List(posts) { post in
                 PostView(post: post)
             }
-            .navigationTitle("Feed")
+            .listStyle(.plain)
+            .scrollContentBackground(.hidden)
+            //.background(Color.athenaColorBlue)
             .refreshable {
                 await loadPosts()
             }
             .task {
                 await loadPosts()
             }
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                        Button {
+                            // TODO: Action to add post
+                        } label: {
+                            Image(systemName: "plus")
+                                .fontWeight(.bold)
+                                .foregroundStyle(Color.athenaColorPink)
+                        }
+                    }
+                
+                ToolbarItem(placement: .principal) {
+                        Text("SETLIST")
+                            .font(.headline)
+                            .fontWeight(.bold)
+                            .tracking(5)
+                            .foregroundStyle(Color.athenaColorPink)
+                    }
+                }
+            }
         }
-    }
     
     func loadPosts() async {
         do {

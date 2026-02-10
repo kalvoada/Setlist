@@ -1,7 +1,7 @@
 import SwiftUI
 import SwiftData
 
-// TODO
+// TODO:
 // Design
 // Options - edit profile/account
 // Share profile

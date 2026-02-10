@@ -29,8 +29,8 @@ struct SearchView: View {
                     }
                 }
             }
-            .navigationTitle("Search")
-            .searchable(text: $searchText, prompt: "Search users...")
+            .navigationBarTitleDisplayMode(.inline)
+            .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .always), prompt: "Search users...")
             .onChange(of: searchText) { oldValue, newValue in
                 if newValue.isEmpty {
                     searchResults = []

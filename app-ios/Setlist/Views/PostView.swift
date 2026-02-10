@@ -1,7 +1,7 @@
 import SwiftUI
 
 // TODO
-// Design
+// username
 // Comments
 // Likes
 // Share
@@ -16,13 +16,16 @@ struct PostView: View {
                 Image(systemName: "person.circle.fill")
                     .resizable()
                     .frame(width: 30, height: 30)
-                    .foregroundColor(.blue)
+                    .foregroundColor(.athenaColorDarkBlue)
+                    .clipShape(Circle())
                 Text("User \(post.user_id)") // TODO get the user name
                     .font(.headline)
+                    .foregroundColor(Color.athenaColorPink)
             }
             Text(post.content)
                 .font(.body)
         }
+        
         .padding(.vertical, 8)
     }
 }
