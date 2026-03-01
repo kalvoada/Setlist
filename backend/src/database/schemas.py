@@ -23,6 +23,7 @@ class PostCreate(BaseModel):
 class Post(BaseModel):
     id: int
     user_id: int
+    content: str
 
     model_config = {"from_attributes": True}
 
