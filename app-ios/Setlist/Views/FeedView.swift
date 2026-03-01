@@ -2,6 +2,9 @@ import SwiftUI
 
 // TODO:
 // Add post
+
+// MARK: - FeedView
+// Home tab
 struct FeedView: View {
     @StateObject private var apiService = APIService()
     @State private var posts: [Post] = []

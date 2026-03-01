@@ -6,6 +6,8 @@ import SwiftUI
 // Share
 // Content: Spotify/AppleMusic - Songs/Albums/Playlists
 
+// MARK: - PostRowStyle
+// Controls how a PostRow renders in different contexts (feed, profile, compact)
 struct PostRowStyle {
     var avatarSize: CGFloat = 30
     var showContent: Bool = true
@@ -16,6 +18,8 @@ struct PostRowStyle {
     static let compact = PostRowStyle(avatarSize: 16, showContent: false)
 }
 
+// MARK: - PostRow
+// Reusable list row for a post
 struct PostRow: View {
     let post: Post
     var style: PostRowStyle = .feed
@@ -29,7 +33,7 @@ struct PostRow: View {
                         .frame(width: style.avatarSize, height: style.avatarSize)
                         .foregroundColor(.athenaColorDarkBlue)
                         .clipShape(Circle())
-                    Text("User \(post.user_id)") // TODO get the user name
+                    Text("User \(post.user_id)") // TODO: get the user name
                         .font(.headline)
                         .foregroundColor(Color.athenaColorPink)
                 }
@@ -42,6 +46,8 @@ struct PostRow: View {
     }
 }
 
+// MARK: - PostDetailView
+// Full post screen with comment thread and inline comment composer
 struct PostDetailView: View {
     let post: Post
 
@@ -50,8 +56,7 @@ struct PostDetailView: View {
     @State private var newCommentText = ""
     @State private var isSubmitting = false
 
-    // Hardcoded for now — swap for real auth later
-    let currentUserId = 1
+    let currentUserId = 1 //TODO: get the actual id
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {

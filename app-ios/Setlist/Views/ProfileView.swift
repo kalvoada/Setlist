@@ -8,6 +8,8 @@ import SwiftData
 // Bio
 // Trackers - posts, friends, follows
 
+// MARK: - ProfileContentView
+// Shared layout for both the current user's profile and other users' profiles
 private struct ProfileContentView: View {
     let user: User
     var isCurrentUser: Bool = false
@@ -64,12 +66,13 @@ private struct ProfileContentView: View {
     }
 }
 
+// MARK: - ProfileView
+// The "Me" tab
 struct ProfileView: View {
     @State private var user: User?
     @StateObject private var apiService = APIService()
 
-    // Hardcoding User ID 1 for now to simulate "Me"
-    let currentUserId = 1
+    let currentUserId = 1 //TODO: get the actual id
 
     var body: some View {
         NavigationStack {
@@ -108,6 +111,8 @@ struct ProfileView: View {
     }
 }
 
+// MARK: - UserProfileView
+// Profile screen for other users
 struct UserProfileView: View {
     let user: User
 

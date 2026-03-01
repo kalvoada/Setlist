@@ -1,13 +1,17 @@
 import Foundation
 import SwiftUI
 
-
+// MARK: - URLSession abstraction for testability
+// Allows injecting a mock session in unit tests instead of making real network calls
 protocol URLSessionProtocol {
     func data(from url: URL) async throws -> (Data, URLResponse)
 }
 
 extension URLSession: URLSessionProtocol {}
 
+
+// MARK: - APIService
+// Central networking layer
 class APIService: ObservableObject {
     let baseURL = "http://127.0.0.1:8000"
     let session: URLSessionProtocol
@@ -16,6 +20,7 @@ class APIService: ObservableObject {
         self.session = session
     }
     
+    // MARK: - Posts
     func fetchPosts() async throws -> [Post] {
         let endpoint = "\(baseURL)/posts/"
         
@@ -38,6 +43,7 @@ class APIService: ObservableObject {
         }
     }
     
+    // MARK: - Comments
     func fetchComments(postId: Int) async throws -> [Comment] {
         guard let url = URL(string: "\(baseURL)/posts/\(postId)/comments") else {
             throw APIError.invalidURL
@@ -53,6 +59,7 @@ class APIService: ObservableObject {
         }
     }
     
+    // Request body for POST /posts/{id}/comments
     struct CreateCommentRequest: Encodable {
         let content: String
         let user_id: Int
@@ -81,7 +88,7 @@ class APIService: ObservableObject {
     }
     
     
-    
+    // MARK: - Users
     func fetchUser(id: Int) async throws -> User {
         let endpoint = "\(baseURL)/users/\(id)"
         

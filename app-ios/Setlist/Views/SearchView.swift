@@ -1,5 +1,7 @@
 import SwiftUI
 
+// MARK: - SearchView
+// Searches users by username via the backend
 struct SearchView: View {
     @EnvironmentObject var apiService: APIService
     @State private var searchText = ""
@@ -49,7 +51,6 @@ struct SearchView: View {
     }
     
     func performSearch(query: String) async {
-        // For now -> fetch directly (TODO)
         do {
             let users = try await apiService.searchUsers(query: query)
             await MainActor.run {
