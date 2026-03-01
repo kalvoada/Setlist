@@ -6,7 +6,7 @@ def get_user(db: Session, user_id: int):
     return db.query(models.DBUser).filter(models.DBUser.id == user_id).first()
 
 def create_user(db: Session, user: schemas.UserCreate):
-    db_user = models.DBUser(username=user.username, bio=user.bio)
+    db_user = models.DBUser(**user.model_dump())
     db.add(db_user)
     db.commit()
     db.refresh(db_user)
@@ -20,7 +20,7 @@ def get_post(db: Session, post_id: int):
     return db.query(models.DBPost).filter(models.DBPost.id == post_id).first()
 
 def create_post(db: Session, post: schemas.PostCreate):
-    db_post = models.DBPost(content=post.content, user_id=post.user_id)
+    db_post = models.DBPost(**post.model_dump())
     db.add(db_post)
     db.commit()
     db.refresh(db_post)
@@ -35,7 +35,7 @@ def get_comments_for_post(db: Session, post_id: int):
     return db.query(models.DBComment).filter(models.DBComment.post_id == post_id).all()
 
 def create_comment(db: Session, post_id: int, comment: schemas.CommentCreate):
-    db_comment = models.DBComment(content=comment.content, user_id=comment.user_id, post_id=post_id)
+    db_comment = models.DBComment(**comment.model_dump(), post_id=post_id)
     db.add(db_comment)
     db.commit()
     db.refresh(db_comment)
