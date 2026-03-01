@@ -17,7 +17,7 @@ struct ProfileView: View {
     let currentUserId = 1
     
     var body: some View {
-        NavigationView {
+        NavigationStack {
             VStack {
                 if let user = user {
                     VStack(spacing: 16) {
@@ -34,11 +34,14 @@ struct ProfileView: View {
                             .foregroundColor(.secondary)
                         
                         Divider()
+                        Text("Posts:")
                         
                         if let posts = user.posts {
                             List(posts) { post in
-                                Text(post.content)
+                                PostRow(post: post, style: .profile)
                             }
+                            .listStyle(.plain)
+                            .scrollContentBackground(.hidden)
                         }
                     }
                     .padding()
