@@ -9,7 +9,7 @@ struct SearchView: View {
     var body: some View {
         NavigationStack {
             List(searchResults) { user in
-                NavigationLink(destination: UserProfileDest(user: user)) {
+                NavigationLink(destination: UserProfileView(user: user)) {
                     HStack {
                         Image(systemName: "person.circle.fill")
                             .resizable()
@@ -58,30 +58,5 @@ struct SearchView: View {
         } catch {
             print("Search error: \(error)")
         }
-    }
-}
-
-struct UserProfileDest: View {
-    let user: User
-    
-    var body: some View {
-        VStack(spacing: 16) {
-            Image(systemName: "person.crop.circle.fill")
-                .resizable()
-                .frame(width: 100, height: 100)
-                .foregroundColor(.gray)
-            
-            Text(user.username)
-                .font(.largeTitle)
-                .bold()
-            
-            if let bio = user.bio {
-                Text(bio)
-                    .foregroundColor(.secondary)
-            }
-            
-            Spacer()
-        }
-        .padding()
     }
 }
