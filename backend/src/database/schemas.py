@@ -1,29 +1,44 @@
 from pydantic import BaseModel
 from typing import List, Optional
 
-# --- POST SCHEMAS ---
-class PostBase(BaseModel):
+# ── Comments ──────────────────────────────────────────────────────────────────
+
+class CommentCreate(BaseModel):
     content: str
-
-class PostCreate(PostBase):
     user_id: int
 
-class Post(PostBase):
+class Comment(BaseModel):
+    id:      int
+    content: str
+    user_id: int
+    post_id: int
+
+    model_config = {"from_attributes": True}
+
+# ── Posts ─────────────────────────────────────────────────────────────────────
+class PostCreate(BaseModel):
+    content: str
+    user_id: int
+
+class Post(BaseModel):
     id: int
     user_id: int
-    class Config:
-        orm_mode = True
 
-# --- USER SCHEMAS ---
-class UserBase(BaseModel):
+    model_config = {"from_attributes": True}
+
+class PostWithComments(Post):
+    comments: List[Comment] = []
+
+# ── Users ─────────────────────────────────────────────────────────────────────
+class UserCreate(BaseModel):
     username: str
-    bio: Optional[str] = None
+    bio: Optional[str] = ""
 
-class UserCreate(UserBase):
-    pass  # Add password here later
+class User(BaseModel):
+    id:       int
+    username: str
+    bio:      Optional[str] = ""
+    posts:    List[Post] = []
 
-class User(UserBase):
-    id: int
-    posts: List[Post] = []
-    class Config:
-        orm_mode = True
+    model_config = {"from_attributes": True}
+

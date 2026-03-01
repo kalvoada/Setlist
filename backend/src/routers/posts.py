@@ -18,3 +18,10 @@ def create_post(post: schemas.PostCreate, db: Session = Depends(database.get_db)
 def read_posts(skip: int = 0, limit: int = 100, db: Session = Depends(database.get_db)):
     posts = crud.get_posts(db, skip=skip, limit=limit)
     return posts
+
+@router.get("/{post_id}", response_model=schemas.PostWithComments)
+def get_post(post_id: int, db: Session = Depends(database.get_db)):
+    post = crud.get_post(db, post_id)
+    if post is None:
+        raise HTTPException(status_code=404, detail="Post not found")
+    return post
