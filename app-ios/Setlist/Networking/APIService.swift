@@ -38,6 +38,48 @@ class APIService: ObservableObject {
         }
     }
     
+    func fetchComments(postId: Int) async throws -> [Comment] {
+        guard let url = URL(string: "\(baseURL)/posts/\(postId)/comments") else {
+            throw APIError.invalidURL
+        }
+        let (data, response) = try await session.data(from: url)
+        guard let response = response as? HTTPURLResponse, response.statusCode == 200 else {
+            throw APIError.invalidResponse
+        }
+        do {
+            return try JSONDecoder().decode([Comment].self, from: data)
+        } catch {
+            throw APIError.invalidData
+        }
+    }
+    
+    struct CreateCommentRequest: Encodable {
+        let content: String
+        let user_id: Int
+    }
+
+    func createComment(postId: Int, content: String, userId: Int) async throws -> Comment {
+        guard let url = URL(string: "\(baseURL)/posts/\(postId)/comments") else {
+            throw APIError.invalidURL
+        }
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        
+        let body = CreateCommentRequest(content: content, user_id: userId)
+        request.httpBody = try JSONEncoder().encode(body)
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let response = response as? HTTPURLResponse, response.statusCode == 200 else {
+            throw APIError.invalidResponse
+        }
+        do {
+            return try JSONDecoder().decode(Comment.self, from: data)
+        } catch {
+            throw APIError.invalidData
+        }
+    }
+    
     
     
     func fetchUser(id: Int) async throws -> User {

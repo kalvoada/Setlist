@@ -18,6 +18,7 @@
 		C29724972F35226E009BFD38 /* Post.swift in Sources */ = {isa = PBXBuildFile; fileRef = C29724942F351E4F009BFD38 /* Post.swift */; };
 		C29724982F352272009BFD38 /* User.swift in Sources */ = {isa = PBXBuildFile; fileRef = C297248E2F351946009BFD38 /* User.swift */; };
 		C297249A2F352528009BFD38 /* PostView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C29724992F352521009BFD38 /* PostView.swift */; };
+		C2BA3A362F54C0520031AC4D /* Comment.swift in Sources */ = {isa = PBXBuildFile; fileRef = C2BA3A352F54C0520031AC4D /* Comment.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -44,6 +45,7 @@
 		C29724922F351B0A009BFD38 /* ProfileView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfileView.swift; sourceTree = "<group>"; };
 		C29724942F351E4F009BFD38 /* Post.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Post.swift; sourceTree = "<group>"; };
 		C29724992F352521009BFD38 /* PostView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PostView.swift; sourceTree = "<group>"; };
+		C2BA3A352F54C0520031AC4D /* Comment.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Comment.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -118,6 +120,7 @@
 		C29724872F3510B7009BFD38 /* Models */ = {
 			isa = PBXGroup;
 			children = (
+				C2BA3A352F54C0520031AC4D /* Comment.swift */,
 				C29724942F351E4F009BFD38 /* Post.swift */,
 				C297248E2F351946009BFD38 /* User.swift */,
 			);
@@ -276,6 +279,7 @@
 				C29724782F350FB5009BFD38 /* ContentView.swift in Sources */,
 				C29724762F350FB5009BFD38 /* SetlistApp.swift in Sources */,
 				C29724972F35226E009BFD38 /* Post.swift in Sources */,
+				C2BA3A362F54C0520031AC4D /* Comment.swift in Sources */,
 				C297249A2F352528009BFD38 /* PostView.swift in Sources */,
 				C29724902F351988009BFD38 /* FeedView.swift in Sources */,
 				C24560FA2F377283007765DF /* APIService.swift in Sources */,

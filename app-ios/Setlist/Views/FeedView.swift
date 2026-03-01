@@ -9,7 +9,7 @@ struct FeedView: View {
     var body: some View {
         NavigationStack {
             List(posts) { post in
-                PostView(post: post)
+                PostRow(post: post)
             }
             .listStyle(.plain)
             .scrollContentBackground(.hidden)

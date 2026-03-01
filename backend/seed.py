@@ -32,24 +32,50 @@ for user in users:
     db.refresh(user)
     print(f"Refreshed: {user.username} (ID: {user.id})")
 
-# 4. CREATE MOCK POSTS
 print("Creating posts...")
-posts = [
-    DBPost(content="Jebu všechny zmrdy", user_id=user1.id),
-    DBPost(content="vn geng vn geng", user_id=user1.id),
-    DBPost(content="džeah", user_id=user2.id),
-    DBPost(content="", user_id=user2.id),
-    DBPost(content="Gugugaga", user_id=user3.id),
-    DBPost(content="feinfeinfeinfeinfeinfeinfein", user_id=user4.id),
-    DBPost(content="feinfeinfeinfeinfeinfeinfein", user_id=user9.id),
-    DBPost(content="feinfeinfeinfeinfeinfeinfein", user_id=user9.id),
-    DBPost(content="feinfeinfeinfeinfeinfeinfein", user_id=user5.id),
-    DBPost(content="feinfeinfeinfeinfeinfeinfein", user_id=user3.id),
-    DBPost(content="feinfeinfeinfeinfeinfeinfein", user_id=user3.id),
-    DBPost(content="feinfeinfeinfeinfeinfeinfein", user_id=user8.id)
+post1  = DBPost(content="Jebu všechny zmrdy", user_id=user1.id)
+post2  = DBPost(content="vn geng vn geng", user_id=user1.id)
+post3  = DBPost(content="džeah", user_id=user2.id)
+post4  = DBPost(content="", user_id=user2.id)
+post5  = DBPost(content="Gugugaga", user_id=user3.id)
+post6  = DBPost(content="feinfeinfeinfeinfeinfeinfein", user_id=user4.id)
+post7  = DBPost(content="feinfeinfeinfeinfeinfeinfein", user_id=user9.id)
+post8  = DBPost(content="feinfeinfeinfeinfeinfeinfein", user_id=user9.id)
+post9  = DBPost(content="feinfeinfeinfeinfeinfeinfein", user_id=user5.id)
+post10 = DBPost(content="feinfeinfeinfeinfeinfeinfein", user_id=user3.id)
+post11 = DBPost(content="feinfeinfeinfeinfeinfeinfein", user_id=user3.id)
+post12 = DBPost(content="feinfeinfeinfeinfeinfeinfein", user_id=user8.id)
+
+posts = [post1, post2, post3, post4, post5, post6, post7, post8, post9, post10, post11, post12]
+db.add_all(posts)
+db.commit()
+
+print("Creating comments...")
+comments = [
+    DBComment(content="to je ale hustý", user_id=user2.id, post_id=post1.id),
+    DBComment(content="naprosto souhlasím", user_id=user3.id, post_id=post1.id),
+    DBComment(content="klasika", user_id=user5.id, post_id=post1.id),
+
+    DBComment(content="vn geng!!!", user_id=user4.id, post_id=post2.id),
+    DBComment(content="co to znamená", user_id=user7.id, post_id=post2.id),
+
+    DBComment(content="džeah to je pravda", user_id=user1.id, post_id=post3.id),
+
+    DBComment(content="to říkáš ty jo", user_id=user9.id, post_id=post5.id),
+    DBComment(content="gugugaga na tebe taky", user_id=user6.id, post_id=post5.id),
+
+    DBComment(content="fein fein fein", user_id=user1.id, post_id=post6.id),
+    DBComment(content="víc fein", user_id=user2.id, post_id=post6.id),
+
+    DBComment(content="tohle je spam", user_id=user10.id, post_id=post7.id),
+    DBComment(content="^^^ pravda", user_id=user3.id, post_id=post7.id),
+
+    DBComment(content="zajímavý obsah", user_id=user4.id, post_id=post10.id),
+    DBComment(content="nesouhlasím", user_id=user8.id, post_id=post10.id),
+    DBComment(content="proč ne", user_id=user5.id, post_id=post10.id),
 ]
 
-db.add_all(posts)
+db.add_all(comments)
 db.commit()
 
 print("Database seeded successfully")
