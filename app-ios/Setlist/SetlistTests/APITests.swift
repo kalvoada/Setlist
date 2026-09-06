@@ -132,7 +132,8 @@ final class APIServiceTests: XCTestCase {
         let (service, session) = makeService(token: "token")
         session.stub(Fixtures.page(Fixtures.post))
 
-        let post = try XCTUnwrap(try await service.feed().items.first)
+        let page = try await service.feed()
+        let post = try XCTUnwrap(page.items.first)
 
         // The embedded author carries no counters; they must default, not throw.
         XCTAssertEqual(post.author.username, "bob")
