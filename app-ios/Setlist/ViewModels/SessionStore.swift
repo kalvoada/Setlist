@@ -23,9 +23,15 @@ final class SessionStore {
 
     let api: APIService
 
-    init(api: APIService = APIService()) {
-        self.api = api
-        api.onUnauthorized = { [weak self] in
+    /// Pass a client in from tests; production builds get the default one.
+    ///
+    /// It is built inside the initialiser rather than as a default argument
+    /// because default arguments are evaluated outside the main actor, and
+    /// `APIService` is main-actor isolated.
+    init(api: APIService? = nil) {
+        let client = api ?? APIService()
+        self.api = client
+        client.onUnauthorized = { [weak self] in
             self?.signOut()
         }
     }
