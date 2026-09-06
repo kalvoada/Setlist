@@ -65,14 +65,38 @@ final class APIService {
     }
 
     /// The API sends ISO-8601 UTC, with or without fractional seconds.
+    ///
+    /// Python writes microseconds (`…:05.123456Z`) while `ISO8601DateFormatter`
+    /// is only dependable to milliseconds, so an over-long fraction is trimmed
+    /// and retried rather than failing the whole decode.
     nonisolated static func date(from text: String) -> Date? {
-        let withFraction = ISO8601DateFormatter()
-        withFraction.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        if let date = withFraction.date(from: text) { return date }
+        let fractional = ISO8601DateFormatter()
+        fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
 
         let plain = ISO8601DateFormatter()
         plain.formatOptions = [.withInternetDateTime]
-        return plain.date(from: text)
+
+        for candidate in [text, millisecondPrecision(text)] {
+            if let date = fractional.date(from: candidate) { return date }
+            if let date = plain.date(from: candidate) { return date }
+        }
+        return nil
+    }
+
+    /// `2026-01-02T03:04:05.123456Z` → `2026-01-02T03:04:05.123Z`
+    nonisolated private static func millisecondPrecision(_ text: String) -> String {
+        guard let dot = text.firstIndex(of: ".") else { return text }
+
+        let fractionStart = text.index(after: dot)
+        var fractionEnd = fractionStart
+        while fractionEnd < text.endIndex, text[fractionEnd].isNumber {
+            fractionEnd = text.index(after: fractionEnd)
+        }
+
+        let digits = text[fractionStart..<fractionEnd]
+        guard digits.count > 3 else { return text }
+
+        return String(text[..<dot]) + "." + String(digits.prefix(3)) + String(text[fractionEnd...])
     }
 
     // MARK: - Auth

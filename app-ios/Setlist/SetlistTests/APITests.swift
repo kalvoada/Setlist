@@ -158,10 +158,18 @@ final class APIServiceTests: XCTestCase {
         XCTAssertNotNil(user.createdAt)
     }
 
-    func testDatesParseWithAndWithoutFractionalSeconds() {
+    func testDatesParseWithAndWithoutFractionalSeconds() throws {
         XCTAssertNotNil(APIService.date(from: "2026-02-03T10:11:12Z"))
+        XCTAssertNotNil(APIService.date(from: "2026-02-03T10:11:12.123Z"))
+        // Python's isoformat() writes microseconds — the shape the API sends.
         XCTAssertNotNil(APIService.date(from: "2026-02-03T10:11:12.123456Z"))
+        XCTAssertNotNil(APIService.date(from: "2026-02-03T10:11:12.123456789Z"))
         XCTAssertNil(APIService.date(from: "not a date"))
+
+        // Trimming the fraction must not shift the instant.
+        let plain = try XCTUnwrap(APIService.date(from: "2026-02-03T10:11:12Z"))
+        let precise = try XCTUnwrap(APIService.date(from: "2026-02-03T10:11:12.000456Z"))
+        XCTAssertEqual(plain.timeIntervalSince1970, precise.timeIntervalSince1970, accuracy: 0.01)
     }
 
     // MARK: Requests
@@ -203,7 +211,13 @@ final class APIServiceTests: XCTestCase {
 
         let url = try XCTUnwrap(session.lastRequest?.url)
         let items = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems ?? []
-        XCTAssertEqual(url.path, "/posts/", "the trailing slash must survive")
+        // Checked on the full string because `URL.path` drops trailing slashes.
+        // FastAPI answers `/posts/` and 307-redirects `/posts`, so the slash
+        // has to reach the wire.
+        XCTAssertTrue(
+            url.absoluteString.hasPrefix("https://api.test/posts/?"),
+            "the trailing slash must survive, got \(url.absoluteString)"
+        )
         XCTAssertEqual(items.first(where: { $0.name == "limit" })?.value, "5")
         XCTAssertEqual(items.first(where: { $0.name == "offset" })?.value, "10")
     }
