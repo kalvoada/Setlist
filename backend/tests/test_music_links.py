@@ -77,3 +77,43 @@ def test_rejected_links(url):
 def test_tracking_parameters_are_stripped_from_spotify_links():
     link = parse_music_url("https://open.spotify.com/track/abc123?si=xyz&utm_source=copy")
     assert link.url == "https://open.spotify.com/track/abc123"
+
+
+# ── OpenGraph metadata ────────────────────────────────────────────────────────
+
+from src.music import parse_opengraph  # noqa: E402
+
+
+def test_apple_music_opengraph_is_split_into_title_and_artist():
+    html = """
+    <meta property="og:title" content="Weird Fishes / Arpeggi by Radiohead on Apple Music">
+    <meta property="og:image" content="https://is1-ssl.mzstatic.com/image/art.jpg">
+    """
+    metadata = parse_opengraph(html)
+    assert metadata.title == "Weird Fishes / Arpeggi"
+    assert metadata.artist_name == "Radiohead"
+    assert metadata.artwork_url == "https://is1-ssl.mzstatic.com/image/art.jpg"
+
+
+def test_bandcamp_opengraph_comma_form():
+    html = '<meta property="og:title" content="Cool Record, by Some Artist">'
+    metadata = parse_opengraph(html)
+    assert metadata.title == "Cool Record"
+    assert metadata.artist_name == "Some Artist"
+
+
+def test_opengraph_handles_reversed_attribute_order_and_missing_tags():
+    html = '<meta content="Just A Title" property="og:title">'
+    metadata = parse_opengraph(html)
+    assert metadata.title == "Just A Title"
+    assert metadata.artist_name is None
+    assert metadata.artwork_url is None
+
+    assert parse_opengraph("<html></html>").title is None
+
+
+def test_metadata_lookup_is_disabled_in_tests():
+    from src.music import fetch_metadata, parse_music_url
+
+    # With ENABLE_LINK_METADATA=false nothing is fetched and nothing blows up.
+    assert fetch_metadata(parse_music_url("https://open.spotify.com/track/abc")).title is None

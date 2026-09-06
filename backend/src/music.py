@@ -270,7 +270,6 @@ _OEMBED_ENDPOINTS = {
     Provider.SOUNDCLOUD: "https://soundcloud.com/oembed",
     Provider.YOUTUBE_MUSIC: "https://www.youtube.com/oembed",
     Provider.DEEZER: "https://api.deezer.com/oembed",
-    Provider.BANDCAMP: "https://bandcamp.com/api/mobile/25/oembed",
 }
 
 _OG_TAG = re.compile(
@@ -286,7 +285,7 @@ _OG_TAG_REVERSED = re.compile(
 
 # Providers whose pages we scrape for OpenGraph tags because they expose no
 # public oEmbed endpoint.
-_OG_SCRAPE_PROVIDERS = {Provider.APPLE_MUSIC, Provider.TIDAL}
+_OG_SCRAPE_PROVIDERS = {Provider.APPLE_MUSIC, Provider.TIDAL, Provider.BANDCAMP}
 
 _MAX_HTML_BYTES = 200_000
 
@@ -337,8 +336,12 @@ def _fetch_opengraph(link: MusicLink) -> MusicMetadata:
     with _client() as client:
         response = client.get(link.url)
         response.raise_for_status()
-        html = response.text[:_MAX_HTML_BYTES]
 
+    return parse_opengraph(response.text[:_MAX_HTML_BYTES])
+
+
+def parse_opengraph(html: str) -> MusicMetadata:
+    """Pull title/artist/artwork out of a page's OpenGraph tags."""
     tags: dict[str, str] = {}
     for key, value in _OG_TAG.findall(html):
         tags.setdefault(key.lower(), value)
@@ -347,12 +350,13 @@ def _fetch_opengraph(link: MusicLink) -> MusicMetadata:
 
     title = tags.get("title")
     artist = None
-    # Apple Music renders "Song by Artist on Apple Music".
+    # Apple Music renders "Song by Artist on Apple Music", Bandcamp
+    # "Song, by Artist".
     if title:
         title = re.sub(r"\s+on Apple Music\s*$", "", title).strip()
-        match = re.match(r"^(?P<title>.+?)\s+by\s+(?P<artist>.+)$", title)
+        match = re.match(r"^(?P<title>.+?),?\s+by\s+(?P<artist>.+)$", title)
         if match:
-            title = match.group("title").strip()
+            title = match.group("title").strip().rstrip(",")
             artist = match.group("artist").strip()
 
     return MusicMetadata(
