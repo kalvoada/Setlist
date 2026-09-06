@@ -1,0 +1,12 @@
+# Runtime dependencies for the Setlist API.
+fastapi==0.141.1
+uvicorn[standard]==0.52.4
+sqlalchemy==2.0.52
+alembic==1.19.2
+pydantic==2.13.5
+pydantic-settings==2.15.0
+email-validator==2.3.0
+python-multipart==0.0.20
+bcrypt==5.0.0
+pyjwt==2.13.0
+httpx==0.28.1
