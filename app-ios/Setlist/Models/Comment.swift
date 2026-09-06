@@ -1,8 +1,15 @@
 import Foundation
 
-struct Comment: Codable, Identifiable {
+struct Comment: Codable, Identifiable, Hashable {
     let id: Int
     let content: String
-    let user_id: Int
-    let post_id: Int
+    let postId: Int
+    let createdAt: Date
+    let author: User
+
+    var relativeDate: String {
+        let formatter = RelativeDateTimeFormatter()
+        formatter.unitsStyle = .abbreviated
+        return formatter.localizedString(for: createdAt, relativeTo: .now)
+    }
 }

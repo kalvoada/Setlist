@@ -277,3 +277,15 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+# ── Backend (Python) ──────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.env
+.pytest_cache/
+.ruff_cache/
+
+# Local SQLite databases are development artifacts — recreate with `python seed.py`
+*.db
+*.sqlite3
