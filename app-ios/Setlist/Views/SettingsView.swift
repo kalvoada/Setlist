@@ -4,6 +4,8 @@ import SwiftUI
 struct SettingsView: View {
     @Environment(SessionStore.self) private var session
 
+    @Binding var path: NavigationPath
+
     @State private var isEditingProfile = false
     @State private var showingSignOutConfirmation = false
 
@@ -40,7 +42,7 @@ struct SettingsView: View {
 
             Section("Activity") {
                 NavigationLink {
-                    LikedPostsView()
+                    LikedPostsView(path: $path)
                 } label: {
                     Label("Posts you liked", systemImage: "heart")
                 }
@@ -83,6 +85,8 @@ struct SettingsView: View {
 struct LikedPostsView: View {
     @Environment(SessionStore.self) private var session
 
+    @Binding var path: NavigationPath
+
     @State private var posts: [Post] = []
     @State private var isLoading = true
 
@@ -98,9 +102,12 @@ struct LikedPostsView: View {
                 )
             } else {
                 List(posts) { post in
-                    PostRow(post: post) {
-                        Task { await toggleLike(post) }
-                    }
+                    PostRow(
+                        post: post,
+                        onOpenPost: { path.append(post) },
+                        onOpenAuthor: { path.append(post.author) },
+                        onLike: { Task { await toggleLike(post) } }
+                    )
                 }
                 .listStyle(.plain)
             }

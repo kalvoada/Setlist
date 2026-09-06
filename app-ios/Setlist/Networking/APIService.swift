@@ -374,8 +374,13 @@ final class APIService {
         do {
             (data, response) = try await session.data(for: request)
         } catch let error as URLError {
-            throw error.code == .notConnectedToInternet ? APIError.offline
-                                                        : APIError.transport(error.localizedDescription)
+            switch error.code {
+            case .cancelled: throw APIError.cancelled
+            case .notConnectedToInternet: throw APIError.offline
+            default: throw APIError.transport(error.localizedDescription)
+            }
+        } catch is CancellationError {
+            throw APIError.cancelled
         } catch {
             throw APIError.transport(error.localizedDescription)
         }

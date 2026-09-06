@@ -46,10 +46,11 @@ final class FeedViewModel {
             posts = page.items
             offset = page.items.count
             hasMore = page.hasMore
-        } catch is CancellationError {
-            // The view went away; nothing to report.
         } catch {
-            errorMessage = error.localizedDescription
+            // A cancelled request means the view went away; nothing to report.
+            if !error.isCancellation {
+                errorMessage = error.localizedDescription
+            }
         }
 
         isLoading = false

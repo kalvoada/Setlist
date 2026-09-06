@@ -5,12 +5,13 @@ import SwiftUI
 struct ProfileView: View {
     @Environment(SessionStore.self) private var session
     @State private var isComposing = false
+    @State private var path = NavigationPath()
 
     var body: some View {
-        NavigationStack {
+        NavigationStack(path: $path) {
             Group {
                 if let currentUser = session.currentUser {
-                    ProfileScreen(userId: currentUser.id)
+                    ProfileScreen(userId: currentUser.id, path: $path)
                 } else {
                     ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
@@ -18,10 +19,10 @@ struct ProfileView: View {
             .navigationTitle("Profile")
             .navigationBarTitleDisplayMode(.inline)
             .navigationDestination(for: Post.self) { post in
-                PostDetailView(post: post)
+                PostDetailView(post: post, path: $path)
             }
             .navigationDestination(for: User.self) { user in
-                UserProfileView(userId: user.id)
+                UserProfileView(userId: user.id, path: $path)
             }
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
@@ -36,7 +37,7 @@ struct ProfileView: View {
                 }
                 ToolbarItem(placement: .topBarTrailing) {
                     NavigationLink {
-                        SettingsView()
+                        SettingsView(path: $path)
                     } label: {
                         Image(systemName: "gearshape")
                             .foregroundStyle(Color.setlistAccent)
@@ -57,9 +58,10 @@ struct ProfileView: View {
 /// Somebody else's profile, pushed onto an existing navigation stack.
 struct UserProfileView: View {
     let userId: Int
+    @Binding var path: NavigationPath
 
     var body: some View {
-        ProfileScreen(userId: userId)
+        ProfileScreen(userId: userId, path: $path)
             .navigationBarTitleDisplayMode(.inline)
     }
 }
@@ -70,6 +72,7 @@ struct ProfileScreen: View {
     @Environment(SessionStore.self) private var session
 
     let userId: Int
+    @Binding var path: NavigationPath
 
     @State private var model = ProfileViewModel()
     @State private var isEditing = false
@@ -77,9 +80,16 @@ struct ProfileScreen: View {
 
     private var isMe: Bool { userId == session.currentUser?.id }
 
+    /// For your own profile the session is the source of truth: following
+    /// someone from Search or a follower list updates it, and this screen has
+    /// to show the new counter without being reloaded by hand.
+    private var user: User? {
+        isMe ? (session.currentUser ?? model.user) : model.user
+    }
+
     var body: some View {
         Group {
-            if let user = model.user {
+            if let user {
                 List {
                     Section {
                         ProfileHeader(
@@ -108,9 +118,15 @@ struct ProfileScreen: View {
                                 .listRowSeparator(.hidden)
                         } else {
                             ForEach(model.posts) { post in
-                                PostRow(post: post, showsAuthor: !isMe) {
-                                    Task { await model.toggleLike(post, using: session.api) }
-                                }
+                                PostRow(
+                                    post: post,
+                                    showsAuthor: !isMe,
+                                    onOpenPost: { path.append(post) },
+                                    onOpenAuthor: { path.append(post.author) },
+                                    onLike: {
+                                        Task { await model.toggleLike(post, using: session.api) }
+                                    }
+                                )
                                 .task { await model.loadMore(after: post, using: session.api) }
                             }
                         }
@@ -130,11 +146,12 @@ struct ProfileScreen: View {
                 EmptyStateView(symbol: "person.slash", title: "Profile unavailable")
             }
         }
-        .navigationTitle(model.user?.name ?? "Profile")
+        .navigationTitle(user?.name ?? "Profile")
         .task {
-            if model.user == nil {
-                await model.load(userId: userId, using: session.api)
-            }
+            // Reloaded on every appearance so counters and posts are current
+            // when you come back to the tab; the list stays on screen while it
+            // refreshes, so there is no flicker.
+            await model.load(userId: userId, using: session.api)
         }
         .sheet(isPresented: $isEditing) {
             EditProfileView { updated in
@@ -143,12 +160,7 @@ struct ProfileScreen: View {
             }
         }
         .sheet(item: $listSource) { source in
-            NavigationStack {
-                UserListView(source: source)
-                    .navigationDestination(for: User.self) { user in
-                        UserProfileView(userId: user.id)
-                    }
-            }
+            UserListSheet(source: source)
         }
     }
 }

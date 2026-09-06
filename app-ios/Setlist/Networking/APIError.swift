@@ -12,6 +12,8 @@ enum APIError: Error, Equatable, LocalizedError {
     case server(status: Int, message: String?)
     case offline
     case transport(String)
+    /// The request was cancelled because the caller went away.
+    case cancelled
 
     var errorDescription: String? {
         switch self {
@@ -35,6 +37,8 @@ enum APIError: Error, Equatable, LocalizedError {
             return "You appear to be offline. Check your connection and try again."
         case let .transport(message):
             return message
+        case .cancelled:
+            return "The request was cancelled."
         }
     }
 
@@ -54,5 +58,20 @@ enum APIError: Error, Equatable, LocalizedError {
         default:
             return .server(status: status, message: message)
         }
+    }
+}
+
+extension Error {
+    /// True when the failure is just "you navigated away".
+    ///
+    /// Cancellation arrives as `CancellationError` from structured
+    /// concurrency, as `URLError.cancelled` from URLSession, or as
+    /// `APIError.cancelled` once it has been through `APIService`. Reporting
+    /// any of them means an alert firing on a screen that is disappearing.
+    var isCancellation: Bool {
+        if self is CancellationError { return true }
+        if let urlError = self as? URLError { return urlError.code == .cancelled }
+        if let apiError = self as? APIError { return apiError == .cancelled }
+        return false
     }
 }

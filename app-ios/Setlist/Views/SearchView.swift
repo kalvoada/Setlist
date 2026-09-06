@@ -7,9 +7,10 @@ struct SearchView: View {
 
     @State private var model = SearchViewModel()
     @State private var searchText = ""
+    @State private var path = NavigationPath()
 
     var body: some View {
-        NavigationStack {
+        NavigationStack(path: $path) {
             List {
                 if searchText.isEmpty {
                     Section("Suggested for you") {
@@ -19,17 +20,23 @@ struct SearchView: View {
                                 .foregroundStyle(.secondary)
                         } else {
                             ForEach(model.suggestions) { user in
-                                UserRow(user: user, isMe: session.isCurrentUser(user)) {
-                                    Task { await model.toggleFollow(user, using: session.api) }
-                                }
+                                UserRow(
+                                    user: user,
+                                    isMe: session.isCurrentUser(user),
+                                    onOpen: { path.append(user) },
+                                    onToggleFollow: { follow(user) }
+                                )
                             }
                         }
                     }
                 } else {
                     ForEach(model.results) { user in
-                        UserRow(user: user, isMe: session.isCurrentUser(user)) {
-                            Task { await model.toggleFollow(user, using: session.api) }
-                        }
+                        UserRow(
+                            user: user,
+                            isMe: session.isCurrentUser(user),
+                            onOpen: { path.append(user) },
+                            onToggleFollow: { follow(user) }
+                        )
                     }
                 }
             }
@@ -37,7 +44,7 @@ struct SearchView: View {
             .navigationTitle("Search")
             .navigationBarTitleDisplayMode(.inline)
             .navigationDestination(for: User.self) { user in
-                UserProfileView(userId: user.id)
+                UserProfileView(userId: user.id, path: $path)
             }
             .searchable(
                 text: $searchText,
@@ -58,6 +65,13 @@ struct SearchView: View {
             }
             .task { await model.loadSuggestions(using: session.api) }
             .refreshable { await model.loadSuggestions(using: session.api, force: true) }
+        }
+    }
+
+    private func follow(_ user: User) {
+        Task {
+            await model.toggleFollow(user, using: session.api)
+            await session.reloadCurrentUser()
         }
     }
 }

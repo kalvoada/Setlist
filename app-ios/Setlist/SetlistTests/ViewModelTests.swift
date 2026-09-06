@@ -242,3 +242,141 @@ final class AccountSettingsViewModelTests: XCTestCase {
         XCTAssertTrue(model.canSave)
     }
 }
+
+/// Following someone has to move two counters: the other person's follower
+/// count, and — via the session — your own following count.
+final class ProfileViewModelTests: XCTestCase {
+
+    private static let profile = """
+    {
+      "id": 5, "username": "bob", "display_name": "Bob", "avatar_url": null,
+      "bio": "", "followers_count": 3, "following_count": 1, "posts_count": 0,
+      "is_following": false, "is_followed_by": false, "is_me": false,
+      "created_at": "2026-01-02T03:04:05Z"
+    }
+    """
+
+    /// Answers `/users/5` and `/users/5/posts` differently — the two calls
+    /// `ProfileViewModel.load` makes concurrently.
+    @MainActor
+    private func makeService() -> (APIService, MockURLSession) {
+        let session = MockURLSession()
+        session.handler = { request in
+            let path = request.url?.path ?? ""
+            let body = path.hasSuffix("/posts")
+                ? #"{"items": [], "limit": 20, "offset": 0, "total": 0, "has_more": false}"#
+                : ProfileViewModelTests.profile
+            let response = HTTPURLResponse(
+                url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil
+            )!
+            return (Data(body.utf8), response)
+        }
+        let service = APIService(
+            baseURL: URL(string: "https://api.test")!, session: session, accessToken: "t"
+        )
+        return (service, session)
+    }
+
+    @MainActor
+    private func stub(_ session: MockURLSession, _ json: String, status: Int = 200) {
+        session.handler = { request in
+            let response = HTTPURLResponse(
+                url: request.url!, statusCode: status, httpVersion: nil, headerFields: nil
+            )!
+            return (Data(json.utf8), response)
+        }
+    }
+
+    @MainActor
+    func testLoadFetchesProfileAndPosts() async {
+        let (service, _) = makeService()
+        let model = ProfileViewModel()
+
+        await model.load(userId: 5, using: service)
+
+        XCTAssertEqual(model.user?.username, "bob")
+        XCTAssertEqual(model.user?.followersCount, 3)
+        XCTAssertFalse(model.user?.isFollowing ?? true)
+        XCTAssertTrue(model.posts.isEmpty)
+    }
+
+    @MainActor
+    func testFollowingRaisesTheFollowerCountAndKeepsTheServersNumber() async {
+        let (service, session) = makeService()
+        let model = ProfileViewModel()
+        await model.load(userId: 5, using: service)
+
+        // The server knows about a follower we hadn't seen yet: 3 + us + them.
+        stub(session, #"{"user_id": 5, "is_following": true, "followers_count": 5}"#)
+        await model.toggleFollow(using: service)
+
+        XCTAssertTrue(model.user?.isFollowing ?? false)
+        XCTAssertEqual(model.user?.followersCount, 5, "the server's count wins")
+        XCTAssertEqual(session.lastRequest?.httpMethod, "POST")
+        XCTAssertFalse(model.isUpdatingFollow)
+    }
+
+    @MainActor
+    func testUnfollowUsesDelete() async {
+        let (service, session) = makeService()
+        let model = ProfileViewModel()
+        await model.load(userId: 5, using: service)
+
+        stub(session, #"{"user_id": 5, "is_following": true, "followers_count": 4}"#)
+        await model.toggleFollow(using: service)
+
+        stub(session, #"{"user_id": 5, "is_following": false, "followers_count": 3}"#)
+        await model.toggleFollow(using: service)
+
+        XCTAssertEqual(session.lastRequest?.httpMethod, "DELETE")
+        XCTAssertFalse(model.user?.isFollowing ?? true)
+        XCTAssertEqual(model.user?.followersCount, 3)
+    }
+
+    @MainActor
+    func testFailedFollowRollsBackTheCounter() async {
+        let (service, session) = makeService()
+        let model = ProfileViewModel()
+        await model.load(userId: 5, using: service)
+
+        stub(session, #"{"detail": "nope"}"#, status: 500)
+        await model.toggleFollow(using: service)
+
+        XCTAssertFalse(model.user?.isFollowing ?? true)
+        XCTAssertEqual(model.user?.followersCount, 3)
+        XCTAssertNotNil(model.errorMessage)
+    }
+}
+
+final class SearchViewModelFollowTests: XCTestCase {
+
+    @MainActor
+    private func makeService(_ json: String, status: Int = 200) -> (APIService, MockURLSession) {
+        let session = MockURLSession()
+        session.stub(json, status: status)
+        let service = APIService(
+            baseURL: URL(string: "https://api.test")!, session: session, accessToken: "t"
+        )
+        return (service, session)
+    }
+
+    @MainActor
+    func testFollowingASuggestionUpdatesThatRow() async throws {
+        let (service, session) = makeService("""
+        [{ "id": 7, "username": "nora", "display_name": null, "avatar_url": null,
+           "bio": "", "followers_count": 2, "following_count": 0, "posts_count": 0,
+           "is_following": false, "is_followed_by": false, "is_me": false }]
+        """)
+        let model = SearchViewModel()
+
+        await model.loadSuggestions(using: service)
+        XCTAssertEqual(model.suggestions.count, 1)
+        let user = try XCTUnwrap(model.suggestions.first)
+
+        session.stub(#"{"user_id": 7, "is_following": true, "followers_count": 3}"#)
+        await model.toggleFollow(user, using: service)
+
+        XCTAssertTrue(model.suggestions[0].isFollowing)
+        XCTAssertEqual(model.suggestions[0].followersCount, 3)
+    }
+}

@@ -28,7 +28,11 @@ final class PostDetailViewModel {
             post = fresh
             comments = fresh.comments ?? []
         } catch {
-            errorMessage = error.localizedDescription
+            // Leaving the screen cancels this request; raising an alert on a
+            // view that is being popped is not something to report.
+            if !error.isCancellation {
+                errorMessage = error.localizedDescription
+            }
         }
         isLoading = false
     }

@@ -7,18 +7,19 @@ struct FeedView: View {
 
     @State private var model = FeedViewModel()
     @State private var isComposing = false
+    @State private var path = NavigationPath()
 
     var body: some View {
-        NavigationStack {
+        NavigationStack(path: $path) {
             content
                 .navigationBarTitleDisplayMode(.inline)
                 .navigationDestination(for: Post.self) { post in
-                    PostDetailView(post: post) { deletedId in
+                    PostDetailView(post: post, path: $path) { deletedId in
                         model.remove(postId: deletedId)
                     }
                 }
                 .navigationDestination(for: User.self) { user in
-                    UserProfileView(userId: user.id)
+                    UserProfileView(userId: user.id, path: $path)
                 }
                 .toolbar {
                     ToolbarItem(placement: .topBarLeading) {
@@ -91,9 +92,12 @@ struct FeedView: View {
         } else {
             List {
                 ForEach(model.posts) { post in
-                    PostRow(post: post) {
-                        Task { await model.toggleLike(post, using: session.api) }
-                    }
+                    PostRow(
+                        post: post,
+                        onOpenPost: { path.append(post) },
+                        onOpenAuthor: { path.append(post.author) },
+                        onLike: { Task { await model.toggleLike(post, using: session.api) } }
+                    )
                     .listRowSeparator(.visible)
                     .task { await model.loadMore(after: post, using: session.api) }
                 }

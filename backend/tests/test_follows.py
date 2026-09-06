@@ -103,3 +103,26 @@ def test_search_matches_display_name_case_insensitively(client, alice, register)
     register("xyz", display_name="Thom Yorke")
     results = client.get("/users/search", params={"q": "thom"}).json()
     assert results["items"][0]["username"] == "xyz"
+
+
+def test_following_count_is_visible_on_your_own_profile_everywhere(client, alice, bob):
+    """The counters the app reads after a follow: /users/me and /users/{id}."""
+    alice_id = alice["user"]["id"]
+
+    client.post(f"/users/{bob['user']['id']}/follow", headers=alice["headers"])
+
+    # What the "me" tab reads.
+    me = client.get("/users/me", headers=alice["headers"]).json()
+    assert me["following_count"] == 1
+    assert me["followers_count"] == 0
+
+    # What a visitor to Alice's profile reads.
+    public = client.get(f"/users/{alice_id}", headers=bob["headers"]).json()
+    assert public["following_count"] == 1
+
+    # And the follow response itself, which the UI applies optimistically.
+    state = client.delete(
+        f"/users/{bob['user']['id']}/follow", headers=alice["headers"]
+    ).json()
+    assert state["is_following"] is False
+    assert client.get("/users/me", headers=alice["headers"]).json()["following_count"] == 0

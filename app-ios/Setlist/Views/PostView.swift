@@ -3,40 +3,47 @@ import SwiftUI
 // MARK: - PostRow
 /// A post in a timeline: who shared it, what they said, and the music itself.
 ///
-/// The header and the body are separate navigation links (author vs. post) and
-/// the action bar sits outside both, so every tap target does one thing.
+/// Navigation is driven by the callbacks rather than by `NavigationLink`:
+/// several links inside one `List` row each draw their own disclosure chevron,
+/// stretch their label across the row, and can both fire from a single tap,
+/// pushing two screens. Buttons plus an explicit `NavigationPath` keep one tap
+/// target per action.
 struct PostRow: View {
     let post: Post
     var showsAuthor: Bool = true
+    var onOpenPost: () -> Void
+    var onOpenAuthor: () -> Void
     var onLike: () -> Void
     var onOpenLikes: (() -> Void)? = nil
 
     var body: some View {
         VStack(alignment: .leading, spacing: Metrics.rowSpacing) {
             if showsAuthor {
-                NavigationLink(value: post.author) {
+                Button(action: onOpenAuthor) {
                     PostAuthorHeader(author: post.author, date: post.relativeDate)
                 }
                 .buttonStyle(.plain)
             }
 
-            NavigationLink(value: post) {
+            Button(action: onOpenPost) {
                 VStack(alignment: .leading, spacing: Metrics.rowSpacing) {
                     if !post.caption.isEmpty {
                         Text(post.caption)
                             .font(.body)
                             .foregroundStyle(.primary)
+                            .frame(maxWidth: .infinity, alignment: .leading)
                             .multilineTextAlignment(.leading)
                     }
                     MusicCardView(music: post.music)
                 }
+                .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
 
             HStack(spacing: 20) {
                 LikeButton(isLiked: post.isLiked, count: post.likesCount, action: onLike)
 
-                NavigationLink(value: post) {
+                Button(action: onOpenPost) {
                     Label(post.commentsCount.formatted(), systemImage: "bubble.right")
                         .font(.footnote.weight(.medium))
                         .foregroundStyle(.secondary)
@@ -91,6 +98,7 @@ struct PostAuthorHeader: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
+        .contentShape(Rectangle())
     }
 }
 
@@ -100,15 +108,18 @@ struct PostDetailView: View {
     @Environment(SessionStore.self) private var session
     @Environment(\.dismiss) private var dismiss
 
+    @Binding var path: NavigationPath
+
     @State private var model: PostDetailViewModel
     @State private var showingLikes = false
     @State private var showingDeleteConfirmation = false
 
     /// Called when the post is deleted so the parent list can drop it.
-    var onDelete: ((Int) -> Void)? = nil
+    let onDelete: ((Int) -> Void)?
 
-    init(post: Post, onDelete: ((Int) -> Void)? = nil) {
+    init(post: Post, path: Binding<NavigationPath>, onDelete: ((Int) -> Void)? = nil) {
         _model = State(initialValue: PostDetailViewModel(post: post))
+        _path = path
         self.onDelete = onDelete
     }
 
@@ -156,12 +167,7 @@ struct PostDetailView: View {
             Button("Cancel", role: .cancel) {}
         }
         .sheet(isPresented: $showingLikes) {
-            NavigationStack {
-                UserListView(source: .likes(postId: model.post.id))
-                    .navigationDestination(for: User.self) { user in
-                        UserProfileView(userId: user.id)
-                    }
-            }
+            UserListSheet(source: .likes(postId: model.post.id))
         }
         .task { await model.load(using: session.api) }
         .alert(
@@ -181,7 +187,9 @@ struct PostDetailView: View {
         List {
             Section {
                 VStack(alignment: .leading, spacing: Metrics.rowSpacing) {
-                    NavigationLink(value: model.post.author) {
+                    Button {
+                        path.append(model.post.author)
+                    } label: {
                         PostAuthorHeader(author: model.post.author, date: model.post.relativeDate)
                     }
                     .buttonStyle(.plain)
@@ -229,14 +237,16 @@ struct PostDetailView: View {
                         .listRowSeparator(.hidden)
                 } else {
                     ForEach(model.comments) { comment in
-                        CommentRow(comment: comment)
-                            .swipeActions(edge: .trailing) {
-                                if model.canDelete(comment, currentUserId: session.currentUser?.id) {
-                                    Button("Delete", role: .destructive) {
-                                        Task { await model.deleteComment(comment, using: session.api) }
-                                    }
+                        CommentRow(comment: comment) {
+                            path.append(comment.author)
+                        }
+                        .swipeActions(edge: .trailing) {
+                            if model.canDelete(comment, currentUserId: session.currentUser?.id) {
+                                Button("Delete", role: .destructive) {
+                                    Task { await model.deleteComment(comment, using: session.api) }
                                 }
                             }
+                        }
                     }
                 }
             }
@@ -272,12 +282,17 @@ struct PostDetailView: View {
 }
 
 /// One comment in the thread.
+///
+/// The avatar is a `Button`, not a `NavigationLink`: a link inside a list row
+/// stretches to the full width of the row and shoves the comment text against
+/// the right edge.
 struct CommentRow: View {
     let comment: Comment
+    var onOpenAuthor: () -> Void
 
     var body: some View {
         HStack(alignment: .top, spacing: 10) {
-            NavigationLink(value: comment.author) {
+            Button(action: onOpenAuthor) {
                 AvatarView(user: comment.author, size: 32)
             }
             .buttonStyle(.plain)
@@ -292,7 +307,10 @@ struct CommentRow: View {
                 }
                 Text(comment.content)
                     .font(.subheadline)
+                    .frame(maxWidth: .infinity, alignment: .leading)
             }
+
+            Spacer(minLength: 0)
         }
         .padding(.vertical, 2)
     }
