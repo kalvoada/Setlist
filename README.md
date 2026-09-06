@@ -90,7 +90,8 @@ docker run -p 8000:8000 \
 ```
 
 The image runs as a non-root user, applies migrations on start and exposes
-`/health` for load-balancer checks.
+`/health` for load-balancer checks. For Postgres, uncomment the
+`psycopg[binary]` line in `requirements.txt` before building.
 
 ### API
 

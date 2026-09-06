@@ -7,7 +7,7 @@ struct UserListView: View {
 
     @State private var model: UserListViewModel
 
-    init(source: UserListViewModel.Source) {
+    init(source: UserListSource) {
         _model = State(initialValue: UserListViewModel(source: source))
     }
 

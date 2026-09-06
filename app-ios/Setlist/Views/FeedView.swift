@@ -60,7 +60,7 @@ struct FeedView: View {
                     Task { await model.load(using: session.api) }
                 }
             )) {
-                ForEach(FeedViewModel.Scope.allCases) { scope in
+                ForEach(FeedScope.allCases) { scope in
                     Text(scope.title).tag(scope)
                 }
             }

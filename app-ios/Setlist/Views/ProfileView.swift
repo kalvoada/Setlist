@@ -73,7 +73,7 @@ struct ProfileScreen: View {
 
     @State private var model = ProfileViewModel()
     @State private var isEditing = false
-    @State private var listSource: UserListViewModel.Source?
+    @State private var listSource: UserListSource?
 
     private var isMe: Bool { userId == session.currentUser?.id }
 
@@ -221,15 +221,5 @@ struct ProfileHeader: View {
             }
         }
         .frame(maxWidth: .infinity)
-    }
-}
-
-extension UserListViewModel.Source: Identifiable {
-    var id: String {
-        switch self {
-        case let .followers(userId): return "followers-\(userId)"
-        case let .following(userId): return "following-\(userId)"
-        case let .likes(postId): return "likes-\(postId)"
-        }
     }
 }

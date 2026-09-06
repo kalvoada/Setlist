@@ -1,27 +1,28 @@
 import Foundation
 import Observation
 
+/// Which timeline the home tab is showing.
+enum FeedScope: String, CaseIterable, Identifiable {
+    case following
+    case discover
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .following: return "Following"
+        case .discover: return "Discover"
+        }
+    }
+}
+
 /// Drives the two home timelines and keeps like state in sync with the server.
 @MainActor
 @Observable
 final class FeedViewModel {
-    enum Scope: String, CaseIterable, Identifiable {
-        case following
-        case discover
-
-        var id: String { rawValue }
-
-        var title: String {
-            switch self {
-            case .following: return "Following"
-            case .discover: return "Discover"
-            }
-        }
-    }
-
     private let pageSize = 20
 
-    var scope: Scope = .following
+    var scope: FeedScope = .following
     private(set) var posts: [Post] = []
     private(set) var isLoading = false
     private(set) var isLoadingMore = false

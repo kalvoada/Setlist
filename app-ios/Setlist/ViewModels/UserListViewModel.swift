@@ -1,35 +1,44 @@
 import Foundation
 import Observation
 
+/// Where a list of people comes from.
+enum UserListSource: Equatable, Identifiable {
+    case followers(userId: Int)
+    case following(userId: Int)
+    case likes(postId: Int)
+
+    var id: String {
+        switch self {
+        case let .followers(userId): return "followers-\(userId)"
+        case let .following(userId): return "following-\(userId)"
+        case let .likes(postId): return "likes-\(postId)"
+        }
+    }
+
+    var title: String {
+        switch self {
+        case .followers: return "Followers"
+        case .following: return "Following"
+        case .likes: return "Likes"
+        }
+    }
+
+    var emptyMessage: String {
+        switch self {
+        case .followers: return "No followers yet."
+        case .following: return "Not following anyone yet."
+        case .likes: return "No likes yet."
+        }
+    }
+}
+
 /// Backs the follower, following and "liked by" lists — same shape, one screen.
 @MainActor
 @Observable
 final class UserListViewModel {
-    enum Source: Equatable {
-        case followers(userId: Int)
-        case following(userId: Int)
-        case likes(postId: Int)
-
-        var title: String {
-            switch self {
-            case .followers: return "Followers"
-            case .following: return "Following"
-            case .likes: return "Likes"
-            }
-        }
-
-        var emptyMessage: String {
-            switch self {
-            case .followers: return "No followers yet."
-            case .following: return "Not following anyone yet."
-            case .likes: return "No likes yet."
-            }
-        }
-    }
-
     private let pageSize = 25
 
-    let source: Source
+    let source: UserListSource
     private(set) var users: [User] = []
     private(set) var isLoading = false
     private(set) var hasMore = false
@@ -37,7 +46,7 @@ final class UserListViewModel {
 
     private var offset = 0
 
-    init(source: Source) {
+    init(source: UserListSource) {
         self.source = source
     }
 
