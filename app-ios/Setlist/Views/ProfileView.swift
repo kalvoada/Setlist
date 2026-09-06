@@ -1,124 +1,235 @@
 import SwiftUI
-import SwiftData
-
-// TODO:
-// Options - edit profile/account
-// Share profile
-// Add post
-// Bio
-// Trackers - posts, friends, follows
-
-// MARK: - ProfileContentView
-// Shared layout for both the current user's profile and other users' profiles
-private struct ProfileContentView: View {
-    let user: User
-    var isCurrentUser: Bool = false
-
-    var body: some View {
-        VStack(spacing: 16) {
-            Image(systemName: "person.crop.circle.fill")
-                .resizable()
-                .frame(width: 100, height: 100)
-                .foregroundColor(.gray)
-
-            Text(user.username)
-                .font(.largeTitle)
-                .bold()
-
-            Text(user.bio ?? "No bio available")
-                .foregroundColor(.secondary)
-                .multilineTextAlignment(.center)
-
-            // Action button differs between current user and others
-            if isCurrentUser {
-                Button("Edit Profile") {
-                    // TODO: open edit profile sheet
-                }
-                .buttonStyle(.bordered)
-            } else {
-                Button("Follow") {
-                    // TODO: follow/unfollow action
-                }
-                .buttonStyle(.borderedProminent)
-                .tint(.athenaColorPink)
-            }
-
-            Divider()
-
-            Text("Posts")
-                .font(.headline)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal)
-
-            if let posts = user.posts {
-                List(posts) { post in
-                    PostRow(post: post, style: .profile)
-                }
-                .listStyle(.plain)
-                .scrollContentBackground(.hidden)
-            } else {
-                Text("No posts yet.")
-                    .foregroundColor(.secondary)
-                    .padding()
-            }
-        }
-        .padding(.top)
-    }
-}
 
 // MARK: - ProfileView
-// The "Me" tab
+/// The "you" tab.
 struct ProfileView: View {
-    @State private var user: User?
-    @StateObject private var apiService = APIService()
-
-    let currentUserId = 1 //TODO: get the actual id
+    @Environment(SessionStore.self) private var session
+    @State private var isComposing = false
 
     var body: some View {
         NavigationStack {
             Group {
-                if let user = user {
-                    ProfileContentView(user: user, isCurrentUser: true)
+                if let currentUser = session.currentUser {
+                    ProfileScreen(userId: currentUser.id)
                 } else {
-                    ProgressView("Loading Profile...")
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
             }
             .navigationTitle("Profile")
             .navigationBarTitleDisplayMode(.inline)
+            .navigationDestination(for: Post.self) { post in
+                PostDetailView(post: post)
+            }
+            .navigationDestination(for: User.self) { user in
+                UserProfileView(userId: user.id)
+            }
             .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
+                ToolbarItem(placement: .topBarLeading) {
                     Button {
-                        // TODO: settings / account options
+                        isComposing = true
+                    } label: {
+                        Image(systemName: "plus")
+                            .fontWeight(.bold)
+                            .foregroundStyle(Color.setlistAccent)
+                    }
+                    .accessibilityLabel("New post")
+                }
+                ToolbarItem(placement: .topBarTrailing) {
+                    NavigationLink {
+                        SettingsView()
                     } label: {
                         Image(systemName: "gearshape")
-                            .foregroundStyle(Color.athenaColorPink)
+                            .foregroundStyle(Color.setlistAccent)
                     }
+                    .accessibilityLabel("Settings")
                 }
             }
-            .task {
-                await loadProfile()
+            .sheet(isPresented: $isComposing) {
+                ComposePostView { _ in
+                    Task { await session.reloadCurrentUser() }
+                }
             }
-        }
-    }
-
-    func loadProfile() async {
-        do {
-            self.user = try await apiService.fetchUser(id: currentUserId)
-        } catch {
-            print("Error fetching profile: \(error)")
         }
     }
 }
 
 // MARK: - UserProfileView
-// Profile screen for other users
+/// Somebody else's profile, pushed onto an existing navigation stack.
 struct UserProfileView: View {
-    let user: User
+    let userId: Int
 
     var body: some View {
-        ProfileContentView(user: user, isCurrentUser: false)
-            .navigationTitle(user.username)
+        ProfileScreen(userId: userId)
             .navigationBarTitleDisplayMode(.inline)
+    }
+}
+
+// MARK: - ProfileScreen
+/// Shared layout for every profile: header, counters, action, posts.
+struct ProfileScreen: View {
+    @Environment(SessionStore.self) private var session
+
+    let userId: Int
+
+    @State private var model = ProfileViewModel()
+    @State private var isEditing = false
+    @State private var listSource: UserListViewModel.Source?
+
+    private var isMe: Bool { userId == session.currentUser?.id }
+
+    var body: some View {
+        Group {
+            if let user = model.user {
+                List {
+                    Section {
+                        ProfileHeader(
+                            user: user,
+                            isMe: isMe,
+                            isUpdatingFollow: model.isUpdatingFollow,
+                            onEdit: { isEditing = true },
+                            onToggleFollow: {
+                                Task {
+                                    await model.toggleFollow(using: session.api)
+                                    await session.reloadCurrentUser()
+                                }
+                            },
+                            onShowFollowers: { listSource = .followers(userId: user.id) },
+                            onShowFollowing: { listSource = .following(userId: user.id) }
+                        )
+                        .listRowInsets(EdgeInsets(top: 12, leading: 16, bottom: 12, trailing: 16))
+                        .listRowSeparator(.hidden)
+                    }
+
+                    Section {
+                        if model.posts.isEmpty {
+                            Text(isMe ? "You have not posted yet." : "No posts yet.")
+                                .font(.footnote)
+                                .foregroundStyle(.secondary)
+                                .listRowSeparator(.hidden)
+                        } else {
+                            ForEach(model.posts) { post in
+                                PostRow(post: post, showsAuthor: !isMe) {
+                                    Task { await model.toggleLike(post, using: session.api) }
+                                }
+                                .task { await model.loadMore(after: post, using: session.api) }
+                            }
+                        }
+                    } header: {
+                        Text("Posts")
+                    }
+                }
+                .listStyle(.plain)
+                .refreshable { await model.load(userId: userId, using: session.api) }
+            } else if model.isLoading {
+                ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if let error = model.errorMessage {
+                ErrorStateView(message: error) {
+                    Task { await model.load(userId: userId, using: session.api) }
+                }
+            } else {
+                EmptyStateView(symbol: "person.slash", title: "Profile unavailable")
+            }
+        }
+        .navigationTitle(model.user?.name ?? "Profile")
+        .task {
+            if model.user == nil {
+                await model.load(userId: userId, using: session.api)
+            }
+        }
+        .sheet(isPresented: $isEditing) {
+            EditProfileView { updated in
+                model.apply(updated)
+                session.apply(updated)
+            }
+        }
+        .sheet(item: $listSource) { source in
+            NavigationStack {
+                UserListView(source: source)
+                    .navigationDestination(for: User.self) { user in
+                        UserProfileView(userId: user.id)
+                    }
+            }
+        }
+    }
+}
+
+// MARK: - ProfileHeader
+struct ProfileHeader: View {
+    let user: User
+    let isMe: Bool
+    let isUpdatingFollow: Bool
+    let onEdit: () -> Void
+    let onToggleFollow: () -> Void
+    let onShowFollowers: () -> Void
+    let onShowFollowing: () -> Void
+
+    var body: some View {
+        VStack(spacing: 14) {
+            AvatarView(user: user, size: 92)
+
+            VStack(spacing: 2) {
+                Text(user.name)
+                    .font(.title2.bold())
+                Text(user.handle)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
+
+            if !user.bio.isEmpty {
+                Text(user.bio)
+                    .font(.subheadline)
+                    .multilineTextAlignment(.center)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            HStack {
+                StatView(value: user.postsCount, label: "Posts")
+
+                Button(action: onShowFollowers) {
+                    StatView(value: user.followersCount, label: "Followers")
+                }
+                .buttonStyle(.plain)
+
+                Button(action: onShowFollowing) {
+                    StatView(value: user.followingCount, label: "Following")
+                }
+                .buttonStyle(.plain)
+            }
+            .padding(.vertical, 4)
+
+            if isMe {
+                Button("Edit profile", action: onEdit)
+                    .buttonStyle(.bordered)
+                    .tint(.setlistAccent)
+            } else {
+                HStack(spacing: 8) {
+                    FollowButton(
+                        isFollowing: user.isFollowing,
+                        isBusy: isUpdatingFollow,
+                        action: onToggleFollow
+                    )
+                    if user.isFollowedBy {
+                        Text("Follows you")
+                            .font(.caption)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(Color.setlistSurface, in: Capsule())
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            }
+        }
+        .frame(maxWidth: .infinity)
+    }
+}
+
+extension UserListViewModel.Source: Identifiable {
+    var id: String {
+        switch self {
+        case let .followers(userId): return "followers-\(userId)"
+        case let .following(userId): return "following-\(userId)"
+        case let .likes(postId): return "likes-\(postId)"
+        }
     }
 }

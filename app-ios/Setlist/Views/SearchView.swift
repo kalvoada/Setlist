@@ -1,63 +1,63 @@
 import SwiftUI
 
 // MARK: - SearchView
-// Searches users by username via the backend
+/// Find people to follow.
 struct SearchView: View {
-    @EnvironmentObject var apiService: APIService
+    @Environment(SessionStore.self) private var session
+
+    @State private var model = SearchViewModel()
     @State private var searchText = ""
-    @State private var searchResults: [User] = []
-    @State private var errorMessage: String?
-    
+
     var body: some View {
         NavigationStack {
-            List(searchResults) { user in
-                NavigationLink(destination: UserProfileView(user: user)) {
-                    HStack {
-                        Image(systemName: "person.circle.fill")
-                            .resizable()
-                            .frame(width: 40, height: 40)
-                            .foregroundColor(.gray)
-                        
-                        VStack(alignment: .leading) {
-                            Text(user.username)
-                                .font(.headline)
-                            if let bio = user.bio, !bio.isEmpty {
-                                Text(bio)
-                                    .font(.caption)
-                                    .foregroundColor(.secondary)
-                                    .lineLimit(1)
+            List {
+                if searchText.isEmpty {
+                    Section("Suggested for you") {
+                        if model.suggestions.isEmpty {
+                            Text("No suggestions right now.")
+                                .font(.footnote)
+                                .foregroundStyle(.secondary)
+                        } else {
+                            ForEach(model.suggestions) { user in
+                                UserRow(user: user, isMe: session.isCurrentUser(user)) {
+                                    Task { await model.toggleFollow(user, using: session.api) }
+                                }
                             }
+                        }
+                    }
+                } else {
+                    ForEach(model.results) { user in
+                        UserRow(user: user, isMe: session.isCurrentUser(user)) {
+                            Task { await model.toggleFollow(user, using: session.api) }
                         }
                     }
                 }
             }
+            .listStyle(.plain)
+            .navigationTitle("Search")
             .navigationBarTitleDisplayMode(.inline)
-            .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .always), prompt: "Search users...")
-            .onChange(of: searchText) { oldValue, newValue in
-                if newValue.isEmpty {
-                    searchResults = []
-                } else {
-                    Task {
-                        await performSearch(query: newValue)
-                    }
-                }
+            .navigationDestination(for: User.self) { user in
+                UserProfileView(userId: user.id)
+            }
+            .searchable(
+                text: $searchText,
+                placement: .navigationBarDrawer(displayMode: .always),
+                prompt: "Search people"
+            )
+            .textInputAutocapitalization(.never)
+            .autocorrectionDisabled()
+            .onChange(of: searchText) { _, newValue in
+                model.search(query: newValue, using: session.api)
             }
             .overlay {
-                if searchResults.isEmpty && !searchText.isEmpty {
+                if model.isSearching && model.results.isEmpty {
+                    ProgressView()
+                } else if !searchText.isEmpty, model.hasSearched, model.results.isEmpty {
                     ContentUnavailableView.search(text: searchText)
                 }
             }
-        }
-    }
-    
-    func performSearch(query: String) async {
-        do {
-            let users = try await apiService.searchUsers(query: query)
-            await MainActor.run {
-                self.searchResults = users
-            }
-        } catch {
-            print("Search error: \(error)")
+            .task { await model.loadSuggestions(using: session.api) }
+            .refreshable { await model.loadSuggestions(using: session.api, force: true) }
         }
     }
 }
