@@ -289,3 +289,12 @@ venv/
 # Local SQLite databases are development artifacts — recreate with `python seed.py`
 *.db
 *.sqlite3
+
+# ── macOS ─────────────────────────────────────────────────────────────────────
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# ── JetBrains IDEs (PyCharm / IntelliJ) ───────────────────────────────────────
+# Per-developer editor settings; nothing here is needed to build the project.
+.idea/
