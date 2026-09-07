@@ -1,4 +1,5 @@
-"""Initial Setlist schema: users, follows, music items, posts, likes, comments.
+"""
+Initial Setlist schema: users, follows, music items, posts, likes, comments.
 
 Revision ID: 0001_initial
 Revises: 

@@ -99,7 +99,8 @@ class DBFollow(Base):
 
 
 class DBMusicItem(Base):
-    """A song / album / playlist shared from a streaming provider.
+    """
+    A song / album / playlist shared from a streaming provider.
 
     Stored once and referenced by every post that shares it, so the same track
     posted by ten people is one row.

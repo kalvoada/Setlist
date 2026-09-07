@@ -1,4 +1,6 @@
-"""Pytest fixtures: a throwaway SQLite database and an authenticated client."""
+"""
+Pytest fixtures: a throwaway SQLite database and an authenticated client.
+"""
 
 from __future__ import annotations
 
@@ -8,8 +10,7 @@ from typing import Callable
 
 import pytest
 
-# Configure the app before it is imported: a scratch database, deterministic
-# auth and no outbound calls to streaming providers.
+# Configure the app before it is imported
 _TMP_DIR = tempfile.mkdtemp(prefix="setlist-tests-")
 os.environ["DATABASE_URL"] = f"sqlite:///{_TMP_DIR}/test.db"
 os.environ["SECRET_KEY"] = "test-secret-key-that-is-long-enough-32"

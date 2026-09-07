@@ -17,10 +17,8 @@ TOKEN_TYPE = "bearer"
 
 # ── Passwords ─────────────────────────────────────────────────────────────────
 def _prehash(password: str) -> bytes:
-    """bcrypt silently truncates after 72 bytes, so hash first.
-
-    SHA-256 + base64 keeps the input inside bcrypt's limit while preserving the
-    entropy of long passphrases.
+    """
+    bcrypt silently truncates after 72 bytes, so hash first.
     """
     digest = hashlib.sha256(password.encode("utf-8")).digest()
     return base64.b64encode(digest)

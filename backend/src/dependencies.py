@@ -14,8 +14,7 @@ from .database import models
 from .database.crud import users as users_crud
 from .database.database import get_db
 
-# ``auto_error=False`` lets endpoints stay readable for both the "must be
-# signed in" and the "nice to know who you are" cases.
+
 _bearer = HTTPBearer(auto_error=False)
 
 DBSession = Annotated[Session, Depends(get_db)]

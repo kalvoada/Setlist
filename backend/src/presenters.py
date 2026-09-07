@@ -1,4 +1,5 @@
-"""Turn ORM rows into API payloads.
+"""
+Turn ORM rows into API payloads.
 
 Counts and viewer-specific flags (``is_liked``, ``is_following``) are resolved
 in batches so a page of posts costs a fixed number of queries instead of one

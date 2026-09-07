@@ -41,7 +41,6 @@ def read_current_user(current_user: CurrentUser, db: DBSession):
 def update_profile(
     payload: schemas.ProfileUpdate, current_user: CurrentUser, db: DBSession
 ):
-    """Settings › Edit profile: display name, bio, avatar."""
     user = users_crud.update_profile(db, current_user, payload)
     return presenters.current_user(db, user)
 
@@ -50,7 +49,6 @@ def update_profile(
 def update_account(
     payload: schemas.AccountUpdate, current_user: CurrentUser, db: DBSession
 ):
-    """Settings › Account: username, e-mail, password (password confirmed)."""
     if not security.verify_password(
         payload.current_password, current_user.hashed_password
     ):
@@ -106,7 +104,7 @@ def search_users(
 def suggested_users(
     db: DBSession, viewer: OptionalUser, limit: int = Query(10, ge=1, le=50)
 ):
-    """Accounts to follow — powers the empty state of the home feed."""
+    """Accounts to follow: powers the empty state of the home feed."""
     users = users_crud.suggested_users(db, viewer, limit=limit)
     return presenters.user_summaries(db, users, viewer)
 

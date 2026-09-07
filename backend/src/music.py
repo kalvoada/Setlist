@@ -1,9 +1,5 @@
-"""Parsing and enrichment of streaming-service links.
-
-A Setlist post always carries a piece of music, so this module turns a pasted
-link ("share" from Spotify, Apple Music, …) into structured data we can store
-and render. Metadata lookup is best-effort: the post must still succeed when a
-provider is slow or unreachable.
+"""
+Parsing and enrichment of streaming-service links.
 """
 
 from __future__ import annotations
@@ -93,7 +89,8 @@ _SOUNDCLOUD_TRACK = re.compile(r"^/([^/?#]+)/([^/?#]+)")
 
 
 def parse_music_url(raw_url: str) -> MusicLink:
-    """Parse ``raw_url`` into a :class:`MusicLink`.
+    """
+    Parse ``raw_url`` into a :class:`MusicLink`.
 
     Raises :class:`UnsupportedMusicLinkError` when the link does not point at a
     song, album, playlist or artist on a supported provider.
@@ -147,8 +144,6 @@ def parse_music_url(raw_url: str) -> MusicLink:
 
 def _parse_spotify(host: str, path: str, url: str) -> MusicLink:
     if host == "spotify.link":
-        # Short share link: we cannot resolve the target offline, but it is a
-        # valid Spotify item, so keep the link itself as the identifier.
         return MusicLink(Provider.SPOTIFY, ItemType.TRACK, path.strip("/"), url)
 
     match = _SPOTIFY_PATH.match(path)
@@ -283,8 +278,6 @@ _OG_TAG_REVERSED = re.compile(
     re.IGNORECASE,
 )
 
-# Providers whose pages we scrape for OpenGraph tags because they expose no
-# public oEmbed endpoint.
 _OG_SCRAPE_PROVIDERS = {Provider.APPLE_MUSIC, Provider.TIDAL, Provider.BANDCAMP}
 
 _MAX_HTML_BYTES = 200_000
@@ -350,8 +343,6 @@ def parse_opengraph(html: str) -> MusicMetadata:
 
     title = tags.get("title")
     artist = None
-    # Apple Music renders "Song by Artist on Apple Music", Bandcamp
-    # "Song, by Artist".
     if title:
         title = re.sub(r"\s+on Apple Music\s*$", "", title).strip()
         match = re.match(r"^(?P<title>.+?),?\s+by\s+(?P<artist>.+)$", title)

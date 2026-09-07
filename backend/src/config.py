@@ -1,7 +1,8 @@
-"""Application configuration.
+"""
+Application configuration.
 
-All values can be overridden with environment variables (or a local ``.env``
-file), which is what makes the service deployable without code changes.
+All values can be overridden with environment variables (or a local ``.env`` file),
+which is what makes the service deployable without code changes.
 """
 
 from functools import lru_cache

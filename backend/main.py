@@ -1,6 +1,5 @@
-"""Setlist API — application entry point.
-
-Run locally:  uvicorn main:app --reload
+"""
+Setlist API application entry point.
 """
 
 from fastapi import FastAPI
@@ -16,7 +15,7 @@ The backend for **Setlist**, a social app for sharing music.
 * Sign up / sign in with a bearer token
 * Follow people and read a feed of what they are listening to
 * Post a song, album or playlist from Spotify, Apple Music, YouTube Music,
-  SoundCloud, TIDAL, Deezer or Bandcamp — every post carries music
+  SoundCloud, TIDAL, Deezer or Bandcamp
 * Like and comment on posts
 * Edit your profile and account settings
 """

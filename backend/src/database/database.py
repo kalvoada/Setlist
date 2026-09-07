@@ -9,8 +9,6 @@ from ..config import settings
 
 connect_args = {}
 if settings.database_url.startswith("sqlite"):
-    # FastAPI serves requests from a thread pool; SQLite needs this to allow a
-    # connection created on one thread to be used on another.
     connect_args["check_same_thread"] = False
 
 engine = create_engine(

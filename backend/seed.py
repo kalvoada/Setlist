@@ -1,9 +1,10 @@
-"""Populate a development database with realistic Setlist data.
+"""
+Populate a development database with realistic Setlist data.
 
     python seed.py            # rebuild ./social.db from scratch
     DATABASE_URL=... python seed.py
 
-WARNING: this drops every table first — never point it at production.
+WARNING: this drops every table first
 """
 
 from __future__ import annotations

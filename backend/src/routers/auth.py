@@ -75,7 +75,7 @@ def login(payload: schemas.LoginRequest, db: DBSession):
 def login_form(
     form_data: Annotated[OAuth2PasswordRequestForm, Depends()], db: DBSession
 ):
-    """OAuth2 password flow — used by the interactive API docs."""
+    """OAuth2 password."""
     user = users_crud.get_user_by_identifier(db, form_data.username)
     if user is None or not security.verify_password(
         form_data.password, user.hashed_password

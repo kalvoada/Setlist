@@ -78,14 +78,18 @@ class RegisterRequest(BaseModel):
 
 
 class AuthResponse(Token):
-    """Token plus the freshly authenticated user, so the client can render
-    immediately after sign-in without a second round trip."""
+    """
+    Token plus the freshly authenticated user, so the client can render
+    immediately after sign-in without a second round trip.
+    """
 
     user: "CurrentUser"
 
 
 class LoginRequest(BaseModel):
-    """``identifier`` accepts either the username or the e-mail address."""
+    """
+    ``identifier`` accepts either the username or the e-mail address.
+    """
 
     identifier: str
     password: str
@@ -126,7 +130,7 @@ class CurrentUser(UserProfile):
 
 
 class ProfileUpdate(BaseModel):
-    """Editable profile fields (Settings › Edit profile)."""
+    """Editable profile fields"""
 
     display_name: Optional[str] = Field(default=None, max_length=50)
     bio: Optional[str] = Field(default=None, max_length=300)
@@ -134,7 +138,7 @@ class ProfileUpdate(BaseModel):
 
 
 class AccountUpdate(BaseModel):
-    """Editable account fields (Settings › Account). Requires the password."""
+    """Editable account fields. Requires the password."""
 
     current_password: str
     username: Optional[str] = None
@@ -192,11 +196,8 @@ class MusicLinkPreview(BaseModel):
 
 # ── Posts ─────────────────────────────────────────────────────────────────────
 class PostCreate(BaseModel):
-    """A post always carries music: ``music_url`` is required.
-
-    The optional title/artist/artwork fields let the client pass through what it
-    already resolved via ``POST /posts/resolve-link`` so the server does not
-    have to hit the provider twice.
+    """
+    A post always carries music: ``music_url`` is required.
     """
 
     music_url: str = Field(min_length=4, max_length=500)
