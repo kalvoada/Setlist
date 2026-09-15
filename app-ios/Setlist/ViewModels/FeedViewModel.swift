@@ -1,7 +1,7 @@
 import Foundation
 import Observation
 
-/// Which timeline the home tab is showing.
+// Which timeline the home tab is showing.
 enum FeedScope: String, CaseIterable, Identifiable {
     case following
     case discover
@@ -16,7 +16,7 @@ enum FeedScope: String, CaseIterable, Identifiable {
     }
 }
 
-/// Drives the two home timelines and keeps like state in sync with the server.
+// Drives the two home timelines and keeps like state in sync with the server.
 @MainActor
 @Observable
 final class FeedViewModel {
@@ -101,7 +101,6 @@ final class FeedViewModel {
         offset = max(0, offset - 1)
     }
 
-    /// Flips the heart immediately and reconciles with the server's count.
     func toggleLike(_ post: Post, using api: APIService) async {
         guard let index = posts.firstIndex(where: { $0.id == post.id }) else { return }
 

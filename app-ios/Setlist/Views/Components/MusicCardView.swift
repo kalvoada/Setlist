@@ -1,6 +1,7 @@
 import SwiftUI
 
-/// The heart of a Setlist post: the song, album or playlist being shared.
+// Album or playlist being shared.
+// FIXME: use the user's platform UI
 struct MusicCardView: View {
     let music: MusicItem
     var artworkSize: CGFloat = 64
@@ -90,7 +91,7 @@ struct MusicCardView: View {
     }
 }
 
-/// The same card for a link that has been resolved but not posted yet.
+// The same card for a link that has been resolved but not posted yet.
 struct MusicPreviewCard: View {
     let preview: MusicLinkPreview
     var onRemove: (() -> Void)? = nil

@@ -1,7 +1,7 @@
 import Foundation
 import Observation
 
-/// A profile screen: the user, their posts and the follow button's state.
+// A profile screen: the user, their posts and the follow button's state.
 @MainActor
 @Observable
 final class ProfileViewModel {

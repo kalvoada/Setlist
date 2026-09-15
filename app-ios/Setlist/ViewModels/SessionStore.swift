@@ -1,16 +1,12 @@
 import Foundation
 import Observation
 
-/// Owns "who is signed in" for the whole app.
-///
-/// The access token lives in the Keychain, so a relaunch restores the session
-/// without asking for the password again; if the server ever rejects the token
-/// the store signs out and the UI falls back to the welcome screen.
+// Owns "who is signed in" for the whole app.
 @MainActor
 @Observable
 final class SessionStore {
     enum Phase: Equatable {
-        /// Checking the Keychain on launch — show a splash, not the sign-in form.
+        // Checking the Keychain on launch
         case restoring
         case signedOut
         case signedIn
@@ -23,11 +19,7 @@ final class SessionStore {
 
     let api: APIService
 
-    /// Pass a client in from tests; production builds get the default one.
-    ///
-    /// It is built inside the initialiser rather than as a default argument
-    /// because default arguments are evaluated outside the main actor, and
-    /// `APIService` is main-actor isolated.
+    // Pass a client in from tests
     init(api: APIService? = nil) {
         let client = api ?? APIService()
         self.api = client
@@ -40,7 +32,7 @@ final class SessionStore {
 
     // MARK: - Lifecycle
 
-    /// Restores a stored session, refreshing the token so it does not go stale.
+    // Restores a stored session, refreshing the token so it does not go stale.
     func restore() async {
         guard let token = KeychainStore.read(Self.tokenAccount), !token.isEmpty else {
             phase = .signedOut
@@ -54,8 +46,7 @@ final class SessionStore {
         } catch APIError.unauthorized {
             signOut()
         } catch {
-            // Offline or the server is down: keep the token and let the user in
-            // with what we know, rather than logging them out.
+            // Offline or the server is down: keep the token and let the user in with what we know, rather than logging them out.
             do {
                 currentUser = try await api.currentUser()
                 phase = .signedIn
@@ -94,7 +85,7 @@ final class SessionStore {
 
     // MARK: - Current user
 
-    /// Pulls fresh counters after following someone, posting, and so on.
+    // Pulls fresh counters after following someone, posting, and so on.
     func reloadCurrentUser() async {
         guard isSignedIn else { return }
         currentUser = try? await api.currentUser()

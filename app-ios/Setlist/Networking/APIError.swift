@@ -1,6 +1,6 @@
 import Foundation
 
-/// Everything the networking layer can fail with, in a form the UI can show.
+// Everything the networking layer can fail with
 enum APIError: Error, Equatable, LocalizedError {
     case invalidURL
     case invalidResponse
@@ -12,7 +12,8 @@ enum APIError: Error, Equatable, LocalizedError {
     case server(status: Int, message: String?)
     case offline
     case transport(String)
-    /// The request was cancelled because the caller went away.
+    
+    // The request was cancelled because the caller went away.
     case cancelled
 
     var errorDescription: String? {
@@ -42,7 +43,7 @@ enum APIError: Error, Equatable, LocalizedError {
         }
     }
 
-    /// Maps an HTTP status onto the closest case, using the server's message.
+    // Maps an HTTP status onto the closest case, using the server's message.
     static func from(status: Int, message: String?) -> APIError {
         switch status {
         case 401:
@@ -62,12 +63,7 @@ enum APIError: Error, Equatable, LocalizedError {
 }
 
 extension Error {
-    /// True when the failure is just "you navigated away".
-    ///
-    /// Cancellation arrives as `CancellationError` from structured
-    /// concurrency, as `URLError.cancelled` from URLSession, or as
-    /// `APIError.cancelled` once it has been through `APIService`. Reporting
-    /// any of them means an alert firing on a screen that is disappearing.
+    // True when the failure is just "you navigated away".
     var isCancellation: Bool {
         if self is CancellationError { return true }
         if let urlError = self as? URLError { return urlError.code == .cancelled }

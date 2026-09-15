@@ -1,8 +1,7 @@
 import XCTest
 @testable import Setlist
 
-/// View-model behaviour that the UI depends on: optimistic updates, rollbacks
-/// and the rules that keep a post from being created without music.
+// View-model behaviour that the UI depends on: optimistic updates, rollbacks and the rules that keep a post from being created without music.
 final class FeedViewModelTests: XCTestCase {
 
     @MainActor
@@ -243,8 +242,7 @@ final class AccountSettingsViewModelTests: XCTestCase {
     }
 }
 
-/// Following someone has to move two counters: the other person's follower
-/// count, and — via the session — your own following count.
+// Following someone has to move two counters: the other person's follower count, and your own following count.
 final class ProfileViewModelTests: XCTestCase {
 
     private static let profile = """
@@ -256,8 +254,6 @@ final class ProfileViewModelTests: XCTestCase {
     }
     """
 
-    /// Answers `/users/5` and `/users/5/posts` differently — the two calls
-    /// `ProfileViewModel.load` makes concurrently.
     @MainActor
     private func makeService() -> (APIService, MockURLSession) {
         let session = MockURLSession()

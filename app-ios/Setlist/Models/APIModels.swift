@@ -2,7 +2,7 @@ import Foundation
 
 // MARK: - Envelopes
 
-/// Every list endpoint returns this envelope.
+// Every list endpoint returns this envelope.
 struct Page<Item: Decodable>: Decodable {
     let items: [Item]
     let limit: Int
@@ -42,7 +42,7 @@ struct FollowState: Decodable {
     let followersCount: Int
 }
 
-/// FastAPI error bodies: `{"detail": "…"}` or `{"detail": [{"msg": "…"}]}`.
+// FastAPI error bodies: `{"detail": "…"}` or `{"detail": [{"msg": "…"}]}`.
 struct APIErrorBody: Decodable {
     let detail: String?
 
@@ -69,7 +69,6 @@ struct APIErrorBody: Decodable {
             }
         }
 
-        /// "Music url: Field required" reads better than "Field required".
         var message: String {
             guard let field = loc?.compactMap(\.text).last(where: { $0 != "body" }) else {
                 return msg

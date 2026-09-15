@@ -1,6 +1,7 @@
 import SwiftUI
 
-/// A user's avatar, falling back to their initials on the brand colour.
+// A user's avatar, falling back to their initials on the brand colour.
+// FIXME: Profile pictures
 struct AvatarView: View {
     let user: User
     var size: CGFloat = 44

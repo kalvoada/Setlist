@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Shared empty / error / loading placeholders so every screen behaves alike.
+// Shared empty / error / loading placeholders so every screen behaves alike.
 struct EmptyStateView: View {
     let symbol: String
     let title: String
@@ -40,7 +40,7 @@ struct ErrorStateView: View {
     }
 }
 
-/// Spinner shown at the bottom of a list while the next page loads.
+// Spinner shown at the bottom of a list while the next page loads.
 struct LoadingFooter: View {
     var body: some View {
         HStack {

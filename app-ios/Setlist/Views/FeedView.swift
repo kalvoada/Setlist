@@ -1,7 +1,7 @@
 import SwiftUI
 
 // MARK: - FeedView
-/// The home tab: what the people you follow are listening to, or everything.
+// The home tab: what the people you follow are listening to, or everything.
 struct FeedView: View {
     @Environment(SessionStore.self) private var session
 

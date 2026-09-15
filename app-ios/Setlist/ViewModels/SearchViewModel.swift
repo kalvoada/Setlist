@@ -1,7 +1,7 @@
 import Foundation
 import Observation
 
-/// Debounced user search, with follow suggestions as the resting state.
+// Debounced user search, with follow suggestions as the resting state.
 @MainActor
 @Observable
 final class SearchViewModel {
@@ -20,7 +20,7 @@ final class SearchViewModel {
         }
     }
 
-    /// Waits for a pause in typing so we do not fire a request per keystroke.
+    // Waits for a pause in typing so we do not fire a request per keystroke.
     func search(query: String, using api: APIService) {
         searchTask?.cancel()
 

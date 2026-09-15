@@ -3,7 +3,7 @@ import XCTest
 
 // MARK: - Test doubles
 
-/// Records the requests the client makes and replays canned responses.
+// Records the requests the client makes and replays canned responses.
 final class MockURLSession: URLSessionProtocol {
     var handler: ((URLRequest) throws -> (Data, URLResponse))?
     private(set) var requests: [URLRequest] = []
@@ -18,7 +18,7 @@ final class MockURLSession: URLSessionProtocol {
         return try handler(request)
     }
 
-    /// Replies with `json` and the given status for every request.
+    // Replies with `json` and the given status for every request.
     func stub(_ json: String, status: Int = 200) {
         handler = { request in
             let response = HTTPURLResponse(
@@ -51,7 +51,6 @@ enum Fixtures {
     }
     """
 
-    /// The compact author shape embedded in posts — no counters at all.
     static let compactAuthor = """
     { "id": 2, "username": "bob", "display_name": null, "avatar_url": null, "bio": "" }
     """

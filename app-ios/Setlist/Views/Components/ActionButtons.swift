@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// The heart on a post. Animates on tap and shows the running count.
+// The heart on a post. Animates on tap and shows the running count.
 struct LikeButton: View {
     let isLiked: Bool
     let count: Int
@@ -25,7 +25,7 @@ struct LikeButton: View {
     }
 }
 
-/// Follow / Following, with a spinner while the request is in flight.
+// Follow / Following, with a spinner while the request is in flight.
 struct FollowButton: View {
     let isFollowing: Bool
     var isBusy: Bool = false
@@ -51,7 +51,7 @@ struct FollowButton: View {
     }
 }
 
-/// One of the "12 Posts / 340 Followers / 89 Following" counters.
+// One of the "12 Posts / 340 Followers / 89 Following" counters.
 struct StatView: View {
     let value: Int
     let label: String

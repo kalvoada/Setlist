@@ -2,14 +2,11 @@ import Foundation
 import Observation
 import UIKit
 
-/// Composing a post: paste a streaming link, check the preview, add a caption.
-///
-/// The link is resolved by the backend so the app shows exactly what will be
-/// stored — and so a post can never be created without music attached.
+// Composing a post: paste a streaming link, check the preview, add a caption.
 @MainActor
 @Observable
 final class ComposePostViewModel {
-    /// Editing the link invalidates whatever we resolved from the old one.
+    // Editing the link invalidates whatever we resolved from the old one.
     var link: String = "" {
         didSet {
             guard link != resolvedLink else { return }
@@ -32,7 +29,7 @@ final class ComposePostViewModel {
         link.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
-    /// Offers the clipboard when it holds something that looks like a link.
+    // Offers the clipboard when it holds something that looks like a link.
     func pasteFromClipboard() {
         guard let text = UIPasteboard.general.string?.trimmingCharacters(in: .whitespacesAndNewlines),
               text.contains("://") || text.hasPrefix("spotify:") else { return }
@@ -63,7 +60,7 @@ final class ComposePostViewModel {
         errorMessage = nil
     }
 
-    /// Creates the post and returns it so the feed can show it straight away.
+    // Creates the post and returns it so the feed can show it straight away.
     func submit(using api: APIService) async -> Post? {
         guard let preview else {
             errorMessage = "Add a song, album or playlist link first."

@@ -1,11 +1,7 @@
 import Foundation
 import Security
 
-/// Minimal Keychain wrapper for the access token.
-///
-/// The token is a credential, so it belongs in the Keychain rather than in
-/// `UserDefaults`: it stays encrypted at rest and never lands in a backup that
-/// can be restored onto another device.
+// Minimal Keychain wrapper for the access token.
 enum KeychainStore {
     private static let service = "app.setlist.credentials"
 

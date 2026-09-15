@@ -9,17 +9,13 @@ protocol URLSessionProtocol {
 extension URLSession: URLSessionProtocol {}
 
 // MARK: - APIService
-/// The single place that knows how to talk to the Setlist backend.
-///
-/// Every call is `async`, returns decoded models and throws `APIError`, so
-/// views and view models never touch `URLRequest` or status codes.
+// The single place that knows how to talk to the Setlist backend.
 @MainActor
 final class APIService {
-    /// Overridable from the generated Info.plist (`SetlistAPIBaseURL`) so the
-    /// same build can point at a local server or a deployed one.
     nonisolated static var defaultBaseURL: URL {
         if let configured = Bundle.main.object(forInfoDictionaryKey: "SetlistAPIBaseURL") as? String,
            !configured.isEmpty,
+           
            let url = URL(string: configured) {
             return url
         }
@@ -31,9 +27,10 @@ final class APIService {
     private let decoder: JSONDecoder
     private let encoder: JSONEncoder
 
-    /// Bearer token attached to authenticated requests.
+    // Bearer token attached to authenticated requests.
     var accessToken: String?
-    /// Called when the server rejects our token, so the app can sign out.
+    
+    // Called when the server rejects our token, so the app can sign out.
     var onUnauthorized: (@MainActor () -> Void)?
 
     init(
@@ -64,11 +61,7 @@ final class APIService {
         encoder.keyEncodingStrategy = .convertToSnakeCase
     }
 
-    /// The API sends ISO-8601 UTC, with or without fractional seconds.
-    ///
-    /// Python writes microseconds (`…:05.123456Z`) while `ISO8601DateFormatter`
-    /// is only dependable to milliseconds, so an over-long fraction is trimmed
-    /// and retried rather than failing the whole decode.
+    // The API sends ISO-8601 UTC, with or without fractional seconds.
     nonisolated static func date(from text: String) -> Date? {
         let fractional = ISO8601DateFormatter()
         fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
@@ -83,7 +76,7 @@ final class APIService {
         return nil
     }
 
-    /// `2026-01-02T03:04:05.123456Z` → `2026-01-02T03:04:05.123Z`
+    // 2026-01-02T03:04:05.123456Z to 2026-01-02T03:04:05.123Z
     nonisolated private static func millisecondPrecision(_ text: String) -> String {
         guard let dot = text.firstIndex(of: ".") else { return text }
 
@@ -129,7 +122,7 @@ final class APIService {
         )
     }
 
-    /// Swaps a still-valid token for a fresh one; used on app launch.
+    // Swaps a still-valid token for a fresh one; used on app launch.
     func refreshSession() async throws -> AuthResponse {
         try await send("/auth/refresh", method: .post)
     }
@@ -220,12 +213,12 @@ final class APIService {
 
     // MARK: - Posts
 
-    /// Posts from the people you follow, plus your own.
+    // Posts from the people you follow, plus your own.
     func feed(limit: Int = 20, offset: Int = 0) async throws -> Page<Post> {
         try await send("/posts/feed", query: Self.pageQuery(limit, offset))
     }
 
-    /// Everything on Setlist, newest first.
+    // Everything on Setlist, newest first.
     func discover(limit: Int = 20, offset: Int = 0) async throws -> Page<Post> {
         try await send("/posts/", query: Self.pageQuery(limit, offset))
     }
@@ -238,7 +231,7 @@ final class APIService {
         try await send("/posts/\(id)")
     }
 
-    /// Turns a pasted streaming link into a preview before posting it.
+    // Turns a pasted streaming link into a preview before posting it.
     func resolveMusicLink(_ url: String) async throws -> MusicLinkPreview {
         try await send("/posts/resolve-link", method: .post, body: ResolveLinkRequest(url: url))
     }
@@ -346,15 +339,15 @@ final class APIService {
         body: (any Encodable)?,
         authenticated: Bool
     ) async throws -> Data {
-        // Built by hand rather than with `appendingPathComponent` so trailing
-        // slashes survive: FastAPI answers `/posts/` and redirects `/posts`.
         let root = baseURL.absoluteString.hasSuffix("/")
             ? String(baseURL.absoluteString.dropLast())
             : baseURL.absoluteString
         guard var components = URLComponents(string: root + path) else {
             throw APIError.invalidURL
         }
+        
         if !query.isEmpty { components.queryItems = query }
+        
         guard let url = components.url else { throw APIError.invalidURL }
 
         var request = URLRequest(url: url)
@@ -371,6 +364,7 @@ final class APIService {
 
         let data: Data
         let response: URLResponse
+        
         do {
             (data, response) = try await session.data(for: request)
         } catch let error as URLError {

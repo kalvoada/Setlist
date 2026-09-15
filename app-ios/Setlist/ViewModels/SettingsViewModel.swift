@@ -1,7 +1,7 @@
 import Foundation
 import Observation
 
-/// Settings › Edit profile.
+// Settings - Edit profile.
 @MainActor
 @Observable
 final class EditProfileViewModel {
@@ -48,7 +48,7 @@ final class EditProfileViewModel {
     }
 }
 
-/// Settings › Account. Every change is confirmed with the current password.
+// Settings - Account.
 @MainActor
 @Observable
 final class AccountSettingsViewModel {
@@ -90,8 +90,6 @@ final class AccountSettingsViewModel {
         hasChanges && !currentPassword.isEmpty && !isSaving && validationMessage == nil
     }
 
-    /// Client-side checks that mirror the server's rules, so the user finds
-    /// out before a round trip.
     var validationMessage: String? {
         if let username = changedUsername {
             if username.count < 3 || username.count > 30 {

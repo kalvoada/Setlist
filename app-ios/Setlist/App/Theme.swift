@@ -1,16 +1,14 @@
 import SwiftUI
 
 // MARK: - Theme
-/// Semantic names for the brand palette in `Assets.xcassets`, so screens read
-/// as intent ("accent", "surface") rather than as raw colour names.
 extension Color {
-    /// Primary brand colour: buttons, likes, active tabs.
+    // Primary brand colour: buttons, likes, active tabs.
     static let setlistAccent = Color.athenaColorPink
-    /// Secondary brand colour, used on top of the accent.
+    // Secondary brand colour, used on top of the accent.
     static let setlistAccentSoft = Color.athenaColorLightPink
-    /// Navigation and tab bar fill.
+    // Navigation and tab bar fill.
     static let setlistBar = Color.athenaColorBlue
-    /// Avatar placeholders and quiet iconography.
+    // Avatar placeholders and quiet iconography.
     static let setlistMuted = Color.athenaColorDarkBlue
 
     static let setlistBackground = Color(uiColor: .systemBackground)

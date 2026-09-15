@@ -1,7 +1,7 @@
 import Foundation
 import Observation
 
-/// Where a list of people comes from.
+// Where a list of people comes from.
 enum UserListSource: Equatable, Identifiable {
     case followers(userId: Int)
     case following(userId: Int)
@@ -32,7 +32,7 @@ enum UserListSource: Equatable, Identifiable {
     }
 }
 
-/// Backs the follower, following and "liked by" lists — same shape, one screen.
+// Backs the follower, following and "liked by" lists 
 @MainActor
 @Observable
 final class UserListViewModel {

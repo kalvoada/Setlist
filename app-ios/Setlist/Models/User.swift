@@ -1,12 +1,6 @@
 import Foundation
 
-/// A Setlist account.
-///
-/// The API returns the same user object in three widths: a compact form
-/// embedded in posts and comments, a summary with social counters, and the
-/// signed-in user's own profile (which also carries `email`). Every field the
-/// compact form omits decodes to a sensible default so one type covers all
-/// three.
+// A Setlist account.
 struct User: Codable, Identifiable, Hashable {
     let id: Int
     var username: String
@@ -23,10 +17,10 @@ struct User: Codable, Identifiable, Hashable {
     var isMe: Bool
 
     var createdAt: Date?
-    /// Only present for the signed-in user.
+    // Only present for the signed-in user.
     var email: String?
 
-    /// What to show as the primary name in the UI.
+    // What to show as the primary name in the UI.
     var name: String {
         let trimmed = displayName?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         return trimmed.isEmpty ? username : trimmed

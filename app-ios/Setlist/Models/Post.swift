@@ -1,6 +1,6 @@
 import Foundation
 
-/// A song, album or playlist shared from a streaming service.
+// A song, album or playlist shared from a streaming service.
 struct MusicItem: Codable, Identifiable, Hashable {
     let id: Int
     let provider: String
@@ -18,7 +18,6 @@ struct MusicItem: Codable, Identifiable, Hashable {
         return URL(string: artworkUrl)
     }
 
-    /// "Album · Spotify", "Song · Apple Music", …
     var subtitle: String {
         let kind: String
         switch itemType {
@@ -28,7 +27,7 @@ struct MusicItem: Codable, Identifiable, Hashable {
         case "artist": kind = "Artist"
         default: kind = itemType.capitalized
         }
-        return "\(kind) · \(providerName)"
+        return "\(kind) · \(providerName)" //TODO: display current user's provider
     }
 
     var symbolName: String {
@@ -63,7 +62,7 @@ struct MusicItem: Codable, Identifiable, Hashable {
     }
 }
 
-/// A streaming link the backend resolved, shown while composing a post.
+// A streaming link the backend resolved, shown while composing a post.
 struct MusicLinkPreview: Codable, Hashable {
     let provider: String
     let providerName: String
@@ -94,7 +93,7 @@ struct MusicLinkPreview: Codable, Hashable {
     }
 }
 
-/// A post: always a piece of music, optionally with something to say about it.
+// A post: always a piece of music, optionally with something to say about it.
 struct Post: Codable, Identifiable, Hashable {
     let id: Int
     var caption: String
@@ -104,7 +103,8 @@ struct Post: Codable, Identifiable, Hashable {
     var likesCount: Int
     var commentsCount: Int
     var isLiked: Bool
-    /// Only returned by `GET /posts/{id}`.
+    
+    // Only returned by "GET /posts/{id}"
     var comments: [Comment]?
 
     var relativeDate: String {
