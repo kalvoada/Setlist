@@ -2,11 +2,12 @@ import SwiftUI
 
 @main
 struct SetlistApp: App {
-    @StateObject private var apiService = APIService()
-    
+    @State private var session = SessionStore()
+
     var body: some Scene {
         WindowGroup {
-            ContentView().environmentObject(apiService)
+            ContentView()
+                .environment(session)
         }
     }
 }
