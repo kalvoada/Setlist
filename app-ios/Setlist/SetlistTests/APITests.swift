@@ -302,8 +302,53 @@ final class APIServiceTests: XCTestCase {
             XCTFail("Expected an error")
         } catch {
             XCTAssertEqual(error as? APIError, .unauthorized)
+            XCTAssertEqual(
+                error.localizedDescription,
+                "Your session has expired. Please sign in again."
+            )
         }
         XCTAssertTrue(signedOut, "the session should be told to sign out")
+    }
+
+    @MainActor
+    func testWrongPasswordReportsTheServerMessageAndKeepsTheSession() async {
+        let (service, session) = makeService(token: "valid")
+        session.stub(#"{"detail": "Incorrect username or password"}"#, status: 401)
+
+        var signedOut = false
+        service.onUnauthorized = { signedOut = true }
+
+        do {
+            _ = try await service.login(identifier: "adam", password: "wrong")
+            XCTFail("Expected an error")
+        } catch {
+            XCTAssertEqual(
+                error as? APIError, .invalidCredentials("Incorrect username or password")
+            )
+            XCTAssertEqual(error.localizedDescription, "Incorrect username or password")
+        }
+        XCTAssertFalse(signedOut, "a rejected password must not sign the user out")
+    }
+
+    @MainActor
+    func testRejectedCredentialsWithoutAMessageFallBackToAGenericLine() async {
+        let (service, session) = makeService()
+        session.stub("{}", status: 401)
+
+        var signedOut = false
+        service.onUnauthorized = { signedOut = true }
+
+        do {
+            _ = try await service.register(
+                username: "alice", email: "a@b.co", password: "supersecret1", displayName: nil
+            )
+            XCTFail("Expected an error")
+        } catch {
+            XCTAssertEqual(
+                error as? APIError, .invalidCredentials("Incorrect username or password.")
+            )
+        }
+        XCTAssertFalse(signedOut, "signing up is not a session that can expire")
     }
 
     @MainActor
