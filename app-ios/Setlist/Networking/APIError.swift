@@ -5,7 +5,10 @@ enum APIError: Error, Equatable, LocalizedError {
     case invalidURL
     case invalidResponse
     case invalidData
+    // An existing session was rejected by the server.
     case unauthorized
+    // The credentials we just submitted were wrong; there is no session to lose.
+    case invalidCredentials(String)
     case notFound
     case conflict(String)
     case validation(String)
@@ -26,6 +29,8 @@ enum APIError: Error, Equatable, LocalizedError {
             return "The server sent data the app could not read."
         case .unauthorized:
             return "Your session has expired. Please sign in again."
+        case let .invalidCredentials(message):
+            return message
         case .notFound:
             return "That content is no longer available."
         case let .conflict(message):
@@ -44,10 +49,17 @@ enum APIError: Error, Equatable, LocalizedError {
     }
 
     // Maps an HTTP status onto the closest case, using the server's message.
-    static func from(status: Int, message: String?) -> APIError {
+    // `submittedCredentials` marks a sign-in or sign-up attempt, where a 401 means
+    // the username and password were wrong rather than that a session ran out.
+    static func from(
+        status: Int,
+        message: String?,
+        submittedCredentials: Bool = false
+    ) -> APIError {
         switch status {
         case 401:
-            return .unauthorized
+            guard submittedCredentials else { return .unauthorized }
+            return .invalidCredentials(message ?? "Incorrect username or password.")
         case 403:
             return .validation(message ?? "You are not allowed to do that.")
         case 404:

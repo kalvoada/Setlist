@@ -109,7 +109,8 @@ final class APIService {
                 password: password,
                 displayName: displayName
             ),
-            authenticated: false
+            authenticated: false,
+            submitsCredentials: true
         )
     }
 
@@ -118,7 +119,8 @@ final class APIService {
             "/auth/login",
             method: .post,
             body: LoginRequest(identifier: identifier, password: password),
-            authenticated: false
+            authenticated: false,
+            submitsCredentials: true
         )
     }
 
@@ -312,9 +314,17 @@ final class APIService {
         method: HTTPMethod = .get,
         query: [URLQueryItem] = [],
         body: (any Encodable)? = nil,
-        authenticated: Bool = true
+        authenticated: Bool = true,
+        submitsCredentials: Bool = false
     ) async throws -> Response {
-        let data = try await perform(path, method: method, query: query, body: body, authenticated: authenticated)
+        let data = try await perform(
+            path,
+            method: method,
+            query: query,
+            body: body,
+            authenticated: authenticated,
+            submitsCredentials: submitsCredentials
+        )
         do {
             return try decoder.decode(Response.self, from: data)
         } catch {
@@ -337,7 +347,8 @@ final class APIService {
         method: HTTPMethod,
         query: [URLQueryItem],
         body: (any Encodable)?,
-        authenticated: Bool
+        authenticated: Bool,
+        submitsCredentials: Bool = false
     ) async throws -> Data {
         let root = baseURL.absoluteString.hasSuffix("/")
             ? String(baseURL.absoluteString.dropLast())
@@ -383,7 +394,12 @@ final class APIService {
 
         guard (200..<300).contains(http.statusCode) else {
             let message = (try? decoder.decode(APIErrorBody.self, from: data))?.detail
-            let apiError = APIError.from(status: http.statusCode, message: message)
+            let apiError = APIError.from(
+                status: http.statusCode,
+                message: message,
+                submittedCredentials: submitsCredentials
+            )
+            // Only a rejected session signs the user out — a failed sign-in must not.
             if case .unauthorized = apiError { onUnauthorized?() }
             throw apiError
         }
