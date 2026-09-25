@@ -14,14 +14,14 @@ Setlist/
 | Area | What works |
 | --- | --- |
 | Accounts | Register, sign in with username or e-mail, JWT sessions kept in the Keychain, token refresh on launch |
-| Posts | Paste a Spotify / Apple Music / YouTube Music / SoundCloud / TIDAL / Deezer / Bandcamp link, see the resolved track, add a caption. A post without music is rejected |
+| Posts | Paste a Spotify / Apple Music / YouTube Music / SoundCloud / Bandcamp link, see the resolved track, add a caption. A post without music is rejected. Each post plays in the service's own embedded player |
 | Feed | "Following" timeline plus a global "Discover" timeline, paged and pull-to-refresh |
 | Follows | Follow and unfollow, follower/following lists and counts, follow suggestions |
 | Likes | Like and unlike with optimistic UI, like counts, who-liked lists, and a "posts you liked" screen |
 | Comments | Threaded under each post; deletable by the comment's author or the post's owner |
 | Profile settings | Display name, bio and avatar |
 | Account settings | Change username, e-mail or password (each confirmed with the current password) and delete the account with everything attached to it |
-| Your music service | Pick Spotify or Apple Music in Settings. Songs and albums shared from the other one open in yours when its catalogue has one with the same title, artist and length; otherwise the card says "Not available on …" and offers the shared link. Other services and playlists open where they were shared |
+| Your music service | Pick Spotify, Apple Music or YouTube Music in Settings. Songs and albums shared from the others play in your service's player when its catalogue has one with a close title, the same artist and the same length (±5 s); otherwise the card says "Not available on …" and offers the shared link. SoundCloud, Bandcamp and playlists play in their own players |
 
 ### Configuration
 
@@ -59,7 +59,7 @@ All list endpoints return `{ items, limit, offset, total, has_more }` and take
 | `POST`/`DELETE` | `/users/{id}/follow` | Follow / unfollow |
 | `GET` | `/users/{id}/followers`, `/following` | The follow graph |
 | `POST` | `/posts/resolve-link` | Turn a streaming link into a preview |
-| `GET` | `/music/{id}/native-link` | Where a post's music opens on your service, looking it up if needed |
+| `GET` | `/music/{id}/native-link` | Where a post's music plays on your service (link and player), looking it up if needed |
 | `POST` | `/posts/` | Create a post (a valid music link is required) |
 | `GET` | `/posts/` | Discover timeline |
 | `GET` | `/posts/feed` | Posts from the people you follow, plus your own |
@@ -81,3 +81,15 @@ app-ios/Setlist/
 ├── Views/          screens, plus reusable Components/
 └── SetlistTests/   decoding, request shape, error mapping, view-model tests
 ```
+
+## Testing
+
+```sh
+cd backend && pytest                                              # offline, no credentials needed
+SETLIST_LIVE_TESTS=1 pytest tests/test_live_matching.py -v -s     # real Spotify, Apple and YouTube Music
+```
+
+The live suite matches five well-known songs in every direction between Spotify,
+Apple Music and YouTube Music. It needs network access and `SPOTIFY_CLIENT_ID` /
+`SPOTIFY_CLIENT_SECRET` in `backend/.env`. The backend logs why a song had no
+match, with what the other service offered, so a failure says what to fix.

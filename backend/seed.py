@@ -91,14 +91,6 @@ MUSIC = [
         "title": "Say It",
         "artist_name": "Flume",
     },
-    {
-        "provider": "tidal",
-        "item_type": "album",
-        "provider_item_id": "77640617",
-        "url": "https://tidal.com/browse/album/77640617",
-        "title": "In Rainbows",
-        "artist_name": "Radiohead",
-    },
 ]
 
 CAPTIONS = [

@@ -11,6 +11,8 @@ struct MusicItem: Codable, Identifiable, Hashable {
     let artistName: String?
     let artworkUrl: String?
     let previewUrl: String?
+    // The original service's own web player, when it has one.
+    let embedUrl: String?
     // Where it opens for the signed-in user; nil until they pick a service.
     var native: NativeLink?
 
@@ -51,6 +53,7 @@ struct MusicItem: Codable, Identifiable, Hashable {
         artistName: String? = nil,
         artworkUrl: String? = nil,
         previewUrl: String? = nil,
+        embedUrl: String? = nil,
         native: NativeLink? = nil
     ) {
         self.id = id
@@ -62,6 +65,7 @@ struct MusicItem: Codable, Identifiable, Hashable {
         self.artistName = artistName
         self.artworkUrl = artworkUrl
         self.previewUrl = previewUrl
+        self.embedUrl = embedUrl
         self.native = native
     }
 }
@@ -89,12 +93,22 @@ struct NativeLink: Codable, Hashable {
     let provider: String
     let providerName: String
     let url: String?
+    // That service's own web player for `url`.
+    var embedUrl: String?
 }
 
 extension MusicItem {
-    // What the play button does for someone listening on `nativeProvider`.
+    // Where the music is played: which service, its link, and its web player.
+    struct Destination: Equatable {
+        let url: URL
+        let service: String
+        let provider: String
+        let player: URL?
+    }
+
+    // What the card shows for someone listening on `nativeProvider`.
     enum ListenAction: Equatable {
-        case open(URL, service: String)
+        case open(Destination)
         // Not on their service: say so and offer the shared link.
         case unavailable(service: String)
         // Not looked up yet, or looked up for a service they have since switched from.
@@ -103,7 +117,10 @@ extension MusicItem {
 
     func listenAction(nativeProvider: String?) -> ListenAction? {
         guard let link else { return nil }
-        guard let nativeProvider else { return .open(link, service: providerName) }
+        let original = Destination(
+            url: link, service: providerName, provider: provider, player: Self.player(embedUrl)
+        )
+        guard let nativeProvider else { return .open(original) }
         guard let native, native.provider == nativeProvider else { return .lookUp }
 
         switch native.status {
@@ -111,14 +128,34 @@ extension MusicItem {
             guard let url = native.url.flatMap(URL.init(string:)) else {
                 return .unavailable(service: native.providerName)
             }
-            return .open(url, service: native.providerName)
+            return .open(Destination(
+                url: url,
+                service: native.providerName,
+                provider: native.provider,
+                player: Self.player(native.embedUrl)
+            ))
         case .original:
-            return .open(link, service: providerName)
+            return .open(original)
         case .unavailable:
             return .unavailable(service: native.providerName)
         case .pending:
             return .lookUp
         }
+    }
+
+    // Only the services' own players are ever loaded into a post.
+    static let playerHosts: Set<String> = [
+        "open.spotify.com", "embed.music.apple.com", "www.youtube.com",
+        "w.soundcloud.com", "bandcamp.com"
+    ]
+
+    private static func player(_ string: String?) -> URL? {
+        guard let url = string.flatMap(URL.init(string:)),
+              url.scheme == "https",
+              let host = url.host,
+              playerHosts.contains(host)
+        else { return nil }
+        return url
     }
 }
 
@@ -127,6 +164,7 @@ extension MusicItem {
 enum MusicService: String, CaseIterable, Identifiable {
     case spotify
     case appleMusic = "apple_music"
+    case youtubeMusic = "youtube_music"
 
     var id: String { rawValue }
 
@@ -134,6 +172,7 @@ enum MusicService: String, CaseIterable, Identifiable {
         switch self {
         case .spotify: return "Spotify"
         case .appleMusic: return "Apple Music"
+        case .youtubeMusic: return "YouTube Music"
         }
     }
 }
@@ -148,6 +187,7 @@ struct MusicLinkPreview: Codable, Hashable {
     let artistName: String?
     let artworkUrl: String?
     let previewUrl: String?
+    var embedUrl: String?
 
     var artworkURL: URL? {
         guard let artworkUrl, !artworkUrl.isEmpty else { return nil }
@@ -164,7 +204,8 @@ struct MusicLinkPreview: Codable, Hashable {
             title: title,
             artistName: artistName,
             artworkUrl: artworkUrl,
-            previewUrl: previewUrl
+            previewUrl: previewUrl,
+            embedUrl: embedUrl
         )
     }
 }

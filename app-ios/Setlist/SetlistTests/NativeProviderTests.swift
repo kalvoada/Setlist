@@ -1,11 +1,15 @@
 import XCTest
 @testable import Setlist
 
-// Opening shared music on the listener's own streaming service.
+// Where shared music plays for the listener: their own service's player when
+// it was matched there, the original's otherwise, and the plain card as the
+// fallback.
 final class NativeProviderTests: XCTestCase {
 
     private static let spotifyURL = URL(string: "https://open.spotify.com/track/abc")!
+    private static let spotifyPlayer = URL(string: "https://open.spotify.com/embed/track/abc")!
     private static let appleURL = URL(string: "https://music.apple.com/us/album/weird-fishes/1109714933?i=1109715167")!
+    private static let applePlayer = URL(string: "https://embed.music.apple.com/us/album/weird-fishes/1109714933?i=1109715167")!
 
     private static func post(native: String) -> String {
         """
@@ -17,6 +21,7 @@ final class NativeProviderTests: XCTestCase {
             "item_type": "track", "url": "https://open.spotify.com/track/abc",
             "title": "Weird Fishes", "artist_name": "Radiohead",
             "artwork_url": null, "preview_url": null,
+            "embed_url": "\(spotifyPlayer.absoluteString)",
             "native": \(native)
           }
         }
@@ -28,6 +33,7 @@ final class NativeProviderTests: XCTestCase {
         providerName: String = "Spotify",
         itemType: String = "track",
         url: String = spotifyURL.absoluteString,
+        embedUrl: String? = spotifyPlayer.absoluteString,
         native: NativeLink? = nil
     ) -> MusicItem {
         MusicItem(
@@ -37,13 +43,29 @@ final class NativeProviderTests: XCTestCase {
             itemType: itemType,
             url: url,
             title: "Weird Fishes",
+            embedUrl: embedUrl,
             native: native
         )
     }
 
-    private func appleMusic(_ status: NativeLink.Status, url: String? = nil) -> NativeLink {
-        NativeLink(status: status, provider: "apple_music", providerName: "Apple Music", url: url)
+    private func appleMusic(
+        _ status: NativeLink.Status,
+        url: String? = nil,
+        embedUrl: String? = nil
+    ) -> NativeLink {
+        NativeLink(
+            status: status, provider: "apple_music", providerName: "Apple Music",
+            url: url, embedUrl: embedUrl
+        )
     }
+
+    private var matchedOnAppleMusic: NativeLink {
+        appleMusic(.resolved, url: Self.appleURL.absoluteString, embedUrl: Self.applePlayer.absoluteString)
+    }
+
+    private static let playsOnSpotify = MusicItem.ListenAction.open(.init(
+        url: spotifyURL, service: "Spotify", provider: "spotify", player: spotifyPlayer
+    ))
 
     @MainActor
     private func makeService(_ json: String, status: Int = 200) -> (APIService, MockURLSession) {
@@ -58,10 +80,11 @@ final class NativeProviderTests: XCTestCase {
     // MARK: Decoding
 
     @MainActor
-    func testFeedCarriesWhereEachSongOpensForTheListener() async throws {
+    func testFeedCarriesTheListenersPlayer() async throws {
         let (service, _) = makeService(Fixtures.page(Self.post(native: """
         { "status": "resolved", "provider": "apple_music", "provider_name": "Apple Music",
-          "url": "\(Self.appleURL.absoluteString)" }
+          "url": "\(Self.appleURL.absoluteString)",
+          "embed_url": "\(Self.applePlayer.absoluteString)" }
         """)))
 
         let page = try await service.feed()
@@ -70,21 +93,23 @@ final class NativeProviderTests: XCTestCase {
         XCTAssertEqual(music.native?.status, .resolved)
         XCTAssertEqual(
             music.listenAction(nativeProvider: "apple_music"),
-            .open(Self.appleURL, service: "Apple Music")
+            .open(.init(url: Self.appleURL, service: "Apple Music", provider: "apple_music",
+                        player: Self.applePlayer))
         )
     }
 
     @MainActor
-    func testPostsWithoutANativeLinkDecodeAsBefore() async throws {
+    func testPostsWithoutPlayersOrNativeLinksDecodeAsBefore() async throws {
         let (service, _) = makeService(Fixtures.page(Fixtures.post))
 
         let page = try await service.feed()
         let music = try XCTUnwrap(page.items.first).music
 
         XCTAssertNil(music.native)
+        XCTAssertNil(music.embedUrl)
         XCTAssertEqual(
             music.listenAction(nativeProvider: nil),
-            .open(Self.spotifyURL, service: "Spotify")
+            .open(.init(url: Self.spotifyURL, service: "Spotify", provider: "spotify", player: nil))
         )
     }
 
@@ -106,49 +131,78 @@ final class NativeProviderTests: XCTestCase {
     func testCurrentUserDecodesTheChosenService() async throws {
         let (service, _) = makeService("""
         { "id": 1, "username": "alice", "bio": "", "email": "alice@example.com",
-          "native_provider": "apple_music" }
+          "native_provider": "youtube_music" }
         """)
 
         let user = try await service.currentUser()
 
-        XCTAssertEqual(user.nativeProvider, "apple_music")
+        XCTAssertEqual(user.nativeProvider, "youtube_music")
     }
 
-    // MARK: What play does
+    // MARK: Which player
 
-    func testWithoutAChosenServiceMusicOpensWhereItWasShared() {
+    func testWithoutAChosenServiceTheOriginalPlayerShows() {
         XCTAssertEqual(
-            music(native: appleMusic(.resolved, url: Self.appleURL.absoluteString))
-                .listenAction(nativeProvider: nil),
-            .open(Self.spotifyURL, service: "Spotify")
+            music(native: matchedOnAppleMusic).listenAction(nativeProvider: nil),
+            Self.playsOnSpotify
         )
     }
 
-    func testAMatchOpensOnTheListenersService() {
+    func testAMatchPlaysInTheListenersService() {
         XCTAssertEqual(
-            music(native: appleMusic(.resolved, url: Self.appleURL.absoluteString))
-                .listenAction(nativeProvider: "apple_music"),
-            .open(Self.appleURL, service: "Apple Music")
+            music(native: matchedOnAppleMusic).listenAction(nativeProvider: "apple_music"),
+            .open(.init(url: Self.appleURL, service: "Apple Music", provider: "apple_music",
+                        player: Self.applePlayer))
         )
     }
 
-    func testBandcampAndSoundCloudOpenOnTheirOwnLinks() {
+    func testMusicAlreadyOnTheListenersServicePlaysAsShared() {
+        let native = NativeLink(
+            status: .resolved, provider: "spotify", providerName: "Spotify",
+            url: Self.spotifyURL.absoluteString, embedUrl: Self.spotifyPlayer.absoluteString
+        )
+        XCTAssertEqual(music(native: native).listenAction(nativeProvider: "spotify"), Self.playsOnSpotify)
+    }
+
+    func testBandcampAndSoundCloudPlayInTheirOwnPlayers() {
         let bandcamp = "https://artist.bandcamp.com/track/some-song"
+        let bandcampPlayer = "https://bandcamp.com/EmbeddedPlayer/v=2/track=2436476419/size=large/"
         XCTAssertEqual(
-            music(provider: "bandcamp", providerName: "Bandcamp", url: bandcamp, native: appleMusic(.original))
+            music(provider: "bandcamp", providerName: "Bandcamp", url: bandcamp,
+                  embedUrl: bandcampPlayer, native: appleMusic(.original))
                 .listenAction(nativeProvider: "apple_music"),
-            .open(URL(string: bandcamp)!, service: "Bandcamp")
+            .open(.init(url: URL(string: bandcamp)!, service: "Bandcamp", provider: "bandcamp",
+                        player: URL(string: bandcampPlayer)!))
         )
 
         let soundcloud = "https://soundcloud.com/artist/some-song"
+        let soundcloudPlayer = "https://w.soundcloud.com/player/?url=https%3A%2F%2Fsoundcloud.com%2Fartist%2Fsome-song"
         XCTAssertEqual(
-            music(provider: "soundcloud", providerName: "SoundCloud", url: soundcloud, native: appleMusic(.original))
+            music(provider: "soundcloud", providerName: "SoundCloud", url: soundcloud,
+                  embedUrl: soundcloudPlayer, native: appleMusic(.original))
                 .listenAction(nativeProvider: "apple_music"),
-            .open(URL(string: soundcloud)!, service: "SoundCloud")
+            .open(.init(url: URL(string: soundcloud)!, service: "SoundCloud", provider: "soundcloud",
+                        player: URL(string: soundcloudPlayer)!))
         )
     }
 
-    func testNoMatchSaysSoInsteadOfOpeningSomethingElse() {
+    func testOnlyTheServicesOwnPlayersAreLoaded() {
+        let native = appleMusic(.resolved, url: Self.appleURL.absoluteString,
+                                embedUrl: "https://evil.example/player")
+        guard case let .open(destination)? = music(native: native).listenAction(nativeProvider: "apple_music") else {
+            return XCTFail("expected to open")
+        }
+        XCTAssertNil(destination.player, "falls back to the plain card")
+        XCTAssertEqual(destination.url, Self.appleURL)
+
+        let insecure = music(embedUrl: "http://open.spotify.com/embed/track/abc")
+        guard case let .open(original)? = insecure.listenAction(nativeProvider: nil) else {
+            return XCTFail("expected to open")
+        }
+        XCTAssertNil(original.player)
+    }
+
+    func testNoMatchSaysSoInsteadOfPlayingSomethingElse() {
         XCTAssertEqual(
             music(native: appleMusic(.unavailable)).listenAction(nativeProvider: "apple_music"),
             .unavailable(service: "Apple Music")
@@ -173,8 +227,7 @@ final class NativeProviderTests: XCTestCase {
 
     func testSwitchingServicesIgnoresTheOldAnswer() {
         XCTAssertEqual(
-            music(native: appleMusic(.resolved, url: Self.appleURL.absoluteString))
-                .listenAction(nativeProvider: "deezer"),
+            music(native: matchedOnAppleMusic).listenAction(nativeProvider: "youtube_music"),
             .lookUp
         )
     }
@@ -246,6 +299,8 @@ final class NativeProviderTests: XCTestCase {
     }
 
     func testOnlyServicesMusicCanBeMatchedIntoArePicked() {
-        XCTAssertEqual(MusicService.allCases.map(\.rawValue), ["spotify", "apple_music"])
+        XCTAssertEqual(
+            MusicService.allCases.map(\.rawValue), ["spotify", "apple_music", "youtube_music"]
+        )
     }
 }

@@ -125,10 +125,13 @@ class DBMusicItem(Base):
     artwork_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
     preview_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
 
-    # The same item on other services ({provider: url}), from the last lookup.
-    # ``links_resolved_at`` is None until a lookup has succeeded.
+    # The same item on other services: {provider: url, or None for "no match"}.
+    # A provider missing from it hasn't been looked up yet.
     provider_links: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
     links_resolved_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    # The player a Bandcamp page advertises; other services' players are built
+    # from the URL.
+    embed_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 

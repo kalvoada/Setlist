@@ -44,6 +44,7 @@ def resolve_link(payload: schemas.LinkResolveRequest, _: CurrentUser):
         artist_name=metadata.artist_name,
         artwork_url=metadata.artwork_url,
         preview_url=metadata.preview_url,
+        embed_url=music_links.embed_url(link.url, metadata.embed_url),
     )
 
 
@@ -61,6 +62,9 @@ def create_post(payload: schemas.PostCreate, current_user: CurrentUser, db: DBSe
     if not metadata.title:
         # The client did not pre-resolve the link, so look it up now.
         metadata = music_links.fetch_metadata(link)
+    elif link.provider is music_links.Provider.BANDCAMP:
+        # Its player id is on the page; never taken from the client.
+        metadata.embed_url = music_links.fetch_metadata(link).embed_url
 
     music_item = posts_crud.get_or_create_music_item(db, link, metadata)
     post = posts_crud.create_post(

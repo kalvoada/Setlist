@@ -15,7 +15,7 @@ from pydantic import (
     field_validator,
 )
 
-from ..music import Provider
+from ..music import NATIVE_PROVIDERS
 
 T = TypeVar("T")
 
@@ -138,13 +138,14 @@ class ProfileUpdate(BaseModel):
     display_name: Optional[str] = Field(default=None, max_length=50)
     bio: Optional[str] = Field(default=None, max_length=300)
     avatar_url: Optional[str] = Field(default=None, max_length=500)
-    # A provider value, or "" to go back to opening music where it was shared.
+    # Spotify, Apple Music or YouTube Music, or "" to go back to opening music
+    # where it was shared.
     native_provider: Optional[str] = None
 
     @field_validator("native_provider")
     @classmethod
     def _native_provider(cls, value: Optional[str]) -> Optional[str]:
-        if value and value not in {provider.value for provider in Provider}:
+        if value and value not in {provider.value for provider in NATIVE_PROVIDERS}:
             raise ValueError("Unknown music service.")
         return value
 
@@ -194,6 +195,8 @@ class NativeLink(BaseModel):
     provider: str
     provider_name: str
     url: Optional[str] = None
+    # The service's own player for ``url``.
+    embed_url: Optional[str] = None
 
 
 class MusicItem(BaseModel):
@@ -208,6 +211,8 @@ class MusicItem(BaseModel):
     artist_name: Optional[str] = None
     artwork_url: Optional[str] = None
     preview_url: Optional[str] = None
+    # The original service's own player, when it has one.
+    embed_url: Optional[str] = None
     # Only when the viewer has picked a music service.
     native: Optional[NativeLink] = None
 
@@ -223,6 +228,7 @@ class MusicLinkPreview(BaseModel):
     artist_name: Optional[str] = None
     artwork_url: Optional[str] = None
     preview_url: Optional[str] = None
+    embed_url: Optional[str] = None
 
 
 # ── Posts ─────────────────────────────────────────────────────────────────────

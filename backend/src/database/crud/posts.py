@@ -35,6 +35,7 @@ def get_or_create_music_item(
             artist_name=(metadata.artist_name or None),
             artwork_url=(metadata.artwork_url or None),
             preview_url=(metadata.preview_url or None),
+            embed_url=(metadata.embed_url or None),
         )
         db.add(item)
         db.flush()
@@ -49,6 +50,8 @@ def get_or_create_music_item(
         item.artwork_url = metadata.artwork_url
     if metadata.preview_url and not item.preview_url:
         item.preview_url = metadata.preview_url
+    if metadata.embed_url and not item.embed_url:
+        item.embed_url = metadata.embed_url
     return item
 
 
@@ -56,10 +59,11 @@ def get_music_item(db: Session, item_id: int) -> Optional[models.DBMusicItem]:
     return db.get(models.DBMusicItem, item_id)
 
 
-def save_provider_links(
-    db: Session, item: models.DBMusicItem, links: dict[str, str]
+def save_provider_link(
+    db: Session, item: models.DBMusicItem, provider: str, url: Optional[str]
 ) -> models.DBMusicItem:
-    item.provider_links = links
+    """Remember the lookup on ``provider``; None means it has no match."""
+    item.provider_links = {**(item.provider_links or {}), provider: url}
     item.links_resolved_at = models.utcnow()
     db.commit()
     db.refresh(item)

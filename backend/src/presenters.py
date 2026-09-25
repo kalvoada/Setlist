@@ -42,6 +42,7 @@ def native_link(
             provider=native_provider,
             provider_name=provider_name(native_provider),
             url=url,
+            embed_url=music_links.embed_url(url, item.embed_url) if url else None,
         )
 
     if item.provider == native_provider:
@@ -50,7 +51,9 @@ def native_link(
         return link("original")
 
     links = item.provider_links or {}
-    if native_provider in links:
+    if native_provider not in links:
+        return link("pending")
+    if links[native_provider]:
         return link("resolved", links[native_provider])
     if (
         item.links_resolved_at is None
@@ -73,6 +76,7 @@ def music_item(
         artist_name=item.artist_name,
         artwork_url=item.artwork_url,
         preview_url=item.preview_url,
+        embed_url=music_links.embed_url(item.url, item.embed_url),
         native=native_link(item, native_provider),
     )
 

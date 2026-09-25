@@ -26,9 +26,16 @@ final class NativeProviderLiveTests: XCTestCase {
         XCTAssertEqual(spotify.host, "open.spotify.com")
         XCTAssertTrue(spotify.path.hasPrefix("/track/"), "expected a Spotify track, got \(spotify)")
 
+        // It plays in Spotify's own player.
+        let player = try XCTUnwrap(native.embedUrl.flatMap(URL.init(string:)))
+        XCTAssertEqual(player.absoluteString, "https://open.spotify.com/embed\(spotify.path)")
+
         var music = post.music
         music.native = native
-        XCTAssertEqual(music.listenAction(nativeProvider: "spotify"), .open(spotify, service: "Spotify"))
+        XCTAssertEqual(
+            music.listenAction(nativeProvider: "spotify"),
+            .open(.init(url: spotify, service: "Spotify", provider: "spotify", player: player))
+        )
     }
 
     // MARK: - Helpers

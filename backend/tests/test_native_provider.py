@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
-import copy
+import itertools
+import logging
+from dataclasses import dataclass
 from datetime import timedelta
+from urllib.parse import parse_qs
 
 import httpx
 import pytest
@@ -17,115 +20,370 @@ from src.music import ItemType, MusicMetadata, parse_music_url
 BANDCAMP_TRACK = "https://artist.bandcamp.com/track/some-song"
 SOUNDCLOUD_TRACK = "https://soundcloud.com/artist/some-song"
 SPOTIFY_PLAYLIST = "https://open.spotify.com/playlist/37i9dQZF1DXcBWIGoYBM5M"
-DEEZER_TRACK = "https://www.deezer.com/track/3135556"
-
-APPLE_COME_TOGETHER = "https://music.apple.com/us/album/come-together/1441164426?i=1441164430"
-SPOTIFY_COME_TOGETHER = "https://open.spotify.com/track/2EqlS6tkEnglzr7tkKAAYD"
-APPLE_ABBEY_ROAD = "https://music.apple.com/us/album/abbey-road-remastered/1441164426"
-APPLE_RICK = (
-    "https://music.apple.com/us/album/never-gonna-give-you-up/1558533900?i=1558534271"
+YOUTUBE_PLAYLIST = (
+    "https://music.youtube.com/playlist?list=PL4fGSI1pDJn6puJdseH2Rt9sMvt9E2M4i"
 )
+BANDCAMP_PLAYER = "https://bandcamp.com/EmbeddedPlayer/v=2/track=2436476419/size=large/"
 
-# ── What the services answer (trimmed to the fields that matter) ─────────────
-
-SPOTIFY_TOKEN = {
-    "access_token": "BQD-app-token", "token_type": "Bearer", "expires_in": 3600
-}
+SERVICES = ("spotify", "apple_music", "youtube_music")
 
 
-def spotify_track(track_id: str, name: str, artists: list[str], duration_ms: int) -> dict:
+# ── A small catalogue, the way each service lists it ──────────────────────────
+#
+# Titles and lengths follow each service's conventions (Spotify tags remasters,
+# Apple Music doesn't, YouTube Music puts them in brackets and rounds lengths to
+# the second). Apple and YouTube ids are illustrative.
+
+
+@dataclass(frozen=True)
+class Release:
+    id: str
+    title: str
+    artist: str
+    ms: int
+
+
+@dataclass(frozen=True)
+class Song:
+    name: str  # what a search for it contains
+    releases: dict[str, Release]
+    # Other results the same search returns: covers, live takes, other mixes.
+    decoys: dict[str, list[Release]]
+
+
+SONGS = [
+    Song(
+        "come together",
+        {
+            "spotify": Release(
+                "2EqlS6tkEnglzr7tkKAAYD",
+                "Come Together - Remastered 2009",
+                "The Beatles",
+                259_946,
+            ),
+            "apple_music": Release("1441164430", "Come Together", "The Beatles", 259_947),
+            "youtube_music": Release(
+                "Hj6rYAOtV8E", "Come Together (Remastered 2009)", "The Beatles", 260_000
+            ),
+        },
+        {
+            "spotify": [
+                Release("0mix2019", "Come Together - 2019 Mix", "The Beatles", 259_000),
+                Release("0aerosmith", "Come Together", "Aerosmith", 225_000),
+            ],
+            "apple_music": [
+                Release("1111", "Come Together (Live)", "The Beatles", 270_000),
+                Release("1112", "Come Together", "Aerosmith", 225_000),
+            ],
+            "youtube_music": [
+                Release("ArcticMonk1", "Come Together", "Arctic Monkeys", 211_000),
+            ],
+        },
+    ),
+    Song(
+        "bohemian rhapsody",
+        {
+            "spotify": Release(
+                "7tFiyTwD0nx5a1eklYtX2J",
+                "Bohemian Rhapsody - Remastered 2011",
+                "Queen",
+                354_320,
+            ),
+            "apple_music": Release("1440806768", "Bohemian Rhapsody", "Queen", 354_947),
+            "youtube_music": Release(
+                "fJ9rUzIMcZQ", "Bohemian Rhapsody (Remastered 2011)", "Queen", 355_000
+            ),
+        },
+        {
+            "spotify": [
+                Release("0liveaid", "Bohemian Rhapsody - Live Aid", "Queen", 148_000),
+                Release("0panic", "Bohemian Rhapsody", "Panic! At The Disco", 367_000),
+            ],
+            "apple_music": [
+                Release("2221", "Bohemian Rhapsody", "Panic! At the Disco", 367_000),
+            ],
+            "youtube_music": [
+                Release("MuppetsBoh1", "Bohemian Rhapsody", "The Muppets", 290_000),
+            ],
+        },
+    ),
+    Song(
+        "billie jean",
+        {
+            "spotify": Release(
+                "5ChkMS8OtdzJeqyybCc9R5", "Billie Jean", "Michael Jackson", 293_826
+            ),
+            "apple_music": Release(
+                "269573364", "Billie Jean", "Michael Jackson", 294_227
+            ),
+            "youtube_music": Release(
+                "Zi_XLOBDo_Y", "Billie Jean", "Michael Jackson", 294_000
+            ),
+        },
+        {
+            "spotify": [
+                Release("0civilwars", "Billie Jean", "The Civil Wars", 282_000),
+                Release(
+                    "0single", "Billie Jean - Single Version", "Michael Jackson", 280_000
+                ),
+            ],
+            "apple_music": [
+                Release("3331", "Billie Jean (Karaoke Version)", "Party Band", 294_000),
+            ],
+            "youtube_music": [
+                Release("CivilWarsBJ", "Billie Jean", "The Civil Wars", 282_000),
+            ],
+        },
+    ),
+    Song(
+        "smells like teen spirit",
+        {
+            "spotify": Release(
+                "5ghIJDpPoe3CfHMGu71E6T", "Smells Like Teen Spirit", "Nirvana", 301_920
+            ),
+            "apple_music": Release(
+                "1440783625", "Smells Like Teen Spirit", "Nirvana", 301_920
+            ),
+            "youtube_music": Release(
+                "A5W0p-Ec4Mg", "Smells Like Teen Spirit", "Nirvana", 302_000
+            ),
+        },
+        {
+            "spotify": [
+                Release("0toriamos", "Smells Like Teen Spirit", "Tori Amos", 293_000),
+                Release(
+                    "0reading",
+                    "Smells Like Teen Spirit - Live at Reading",
+                    "Nirvana",
+                    290_000,
+                ),
+            ],
+            "apple_music": [
+                Release("4441", "Smells Like Teen Spirit", "Tori Amos", 293_000),
+            ],
+            "youtube_music": [
+                Release("PatSmithSLT", "Smells Like Teen Spirit", "Patti Smith", 290_000),
+            ],
+        },
+    ),
+    Song(
+        "blinding lights",
+        {
+            "spotify": Release(
+                "0VjIjW4GlUZAMYd2vXMi3b", "Blinding Lights", "The Weeknd", 200_040
+            ),
+            "apple_music": Release(
+                "1499378615", "Blinding Lights", "The Weeknd", 200_040
+            ),
+            "youtube_music": Release(
+                "J7p4bzqLvCw", "Blinding Lights", "The Weeknd", 200_000
+            ),
+        },
+        {
+            "spotify": [
+                Release(
+                    "0remix",
+                    "Blinding Lights (with ROSALÍA) - Remix",
+                    "The Weeknd, ROSALÍA",
+                    202_000,
+                ),
+            ],
+            "apple_music": [
+                Release(
+                    "5551", "Blinding Lights (Chromatics Remix)", "The Weeknd", 290_000
+                ),
+            ],
+            "youtube_music": [
+                Release("LoiCoverBL1", "Blinding Lights", "Loi", 190_000),
+            ],
+        },
+    ),
+]
+
+
+def source_url(service: str, release: Release) -> str:
+    """How someone would share ``release``."""
+    return {
+        "spotify": f"https://open.spotify.com/track/{release.id}",
+        "apple_music": f"https://music.apple.com/us/album/song/1440000000?i={release.id}",
+        "youtube_music": f"https://music.youtube.com/watch?v={release.id}",
+    }[service]
+
+
+def resolved_url(service: str, release: Release) -> str:
+    """The link Setlist should open ``release`` with."""
+    if service == "apple_music":
+        return f"https://music.apple.com/us/album/song/1440000000?i={release.id}&uo=4"
+    return source_url(service, release)
+
+
+# ── What the services answer ──────────────────────────────────────────────────
+
+
+def spotify_track(release: Release) -> dict:
     return {
         "album": {"album_type": "album", "name": "Some Album"},
-        "artists": [{"name": artist, "type": "artist"} for artist in artists],
-        "duration_ms": duration_ms,
-        "external_ids": {"isrc": "GBAYE0601690"},
-        "external_urls": {"spotify": f"https://open.spotify.com/track/{track_id}"},
-        "id": track_id,
-        "name": name,
+        "artists": [
+            {"name": name, "type": "artist"} for name in release.artist.split(", ")
+        ],
+        "duration_ms": release.ms,
+        "external_urls": {"spotify": f"https://open.spotify.com/track/{release.id}"},
+        "id": release.id,
+        "name": release.title,
         "type": "track",
-        "uri": f"spotify:track:{track_id}",
     }
 
 
-def spotify_album(album_id: str, name: str, artist: str) -> dict:
-    return {
-        "album_type": "album",
-        "artists": [{"name": artist, "type": "artist"}],
-        "external_urls": {"spotify": f"https://open.spotify.com/album/{album_id}"},
-        "id": album_id,
-        "name": name,
-        "total_tracks": 17,
-        "type": "album",
-    }
-
-
-def itunes_song(track_id: int, name: str, artist: str, millis: int) -> dict:
-    url = f"https://music.apple.com/us/album/{name.lower().replace(' ', '-')}/1441164426"
+def itunes_song(release: Release) -> dict:
+    url = f"https://music.apple.com/us/album/song/1440000000?i={release.id}&uo=4"
     return {
         "wrapperType": "track",
         "kind": "song",
-        "artistName": artist,
+        "artistName": release.artist,
         "collectionName": "Some Album",
-        "trackName": name,
-        "trackId": track_id,
-        "collectionViewUrl": f"{url}?i={track_id}&uo=4",
-        "trackViewUrl": f"{url}?i={track_id}&uo=4",
-        "trackTimeMillis": millis,
-        "country": "USA",
+        "trackName": release.title,
+        "trackId": int(release.id),
+        "collectionViewUrl": url,
+        "trackViewUrl": url,
+        "trackTimeMillis": release.ms,
     }
 
 
-def itunes(*results: dict) -> dict:
-    return {"resultCount": len(results), "results": list(results)}
+def youtube_song(release: Release) -> dict:
+    return {
+        "category": "Songs",
+        "resultType": "song",
+        "videoId": release.id,
+        "title": release.title,
+        "artists": [{"name": release.artist, "id": "UC123"}],
+        "album": {"name": "Some Album", "id": "MPREb_1"},
+        "duration": f"{release.ms // 60_000}:{release.ms // 1000 % 60:02}",
+        "duration_seconds": release.ms // 1000,
+        "isExplicit": False,
+    }
 
 
-def spotify_search(kind: str, *items: dict) -> dict:
-    return {kind: {"items": list(items), "limit": 10, "offset": 0, "total": len(items)}}
-
-
-COME_TOGETHER_ON_APPLE = itunes(
-    itunes_song(1441164430, "Come Together", "The Beatles", 259947)
-)
-COME_TOGETHER_ON_SPOTIFY = spotify_search(
-    "tracks",
-    spotify_track("0mix2019", "Come Together - 2019 Mix", ["The Beatles"], 259_000),
-    spotify_track("0cover", "Come Together", ["Aerosmith"], 225_000),
-    spotify_track("2EqlS6tkEnglzr7tkKAAYD", "Come Together - Remastered 2009",
-                  ["The Beatles"], 259_946),
-)
+def youtube_details(release: Release, video_type: str = "MUSIC_VIDEO_TYPE_ATV") -> dict:
+    return {
+        "videoDetails": {
+            "videoId": release.id,
+            "title": release.title,
+            "lengthSeconds": str(release.ms // 1000),
+            "author": release.artist,
+            "musicVideoType": video_type,
+        }
+    }
 
 
 class FakeCatalogues:
-    """Answers like Spotify's Web API and Apple's iTunes Search API."""
+    """
+    Answers like Spotify's Web API, Apple's iTunes Search API and ytmusicapi,
+    from SONGS. ``break_route`` makes one of them fail.
+    """
 
     def __init__(self) -> None:
         self.requests: list[httpx.Request] = []
-        self.routes: dict = {}
-        self.reply("accounts.spotify.com/api/token", 200, SPOTIFY_TOKEN)
+        self.youtube_calls: list[tuple] = []
+        self.broken: dict[str, object] = {}
+        self.videos: dict[str, dict] = {}
+        self.overrides: dict[str, object] = {}
 
-    def reply(self, route: str, status: int, payload=None, *, text: str | None = None):
-        def respond(_request):
-            if text is not None:
-                return httpx.Response(status, text=text)
-            return httpx.Response(status, json=payload)
+    # Test controls.
 
-        self.routes[route] = respond
+    def break_route(self, route: str, failure) -> None:
+        """``failure``: an exception, ``(status, json)`` or a text body."""
+        self.broken[route] = failure
 
-    def fail(self, route: str, error: Exception) -> None:
-        def respond(_request):
-            raise error
-
-        self.routes[route] = respond
+    def fix(self) -> None:
+        self.broken.clear()
 
     def calls(self, route: str) -> list[httpx.Request]:
         return [r for r in self.requests if (r.url.host + r.url.path).startswith(route)]
 
+    # Lookups in the catalogue.
+
+    @staticmethod
+    def song_for(query: str) -> Song | None:
+        return next((song for song in SONGS if song.name in query.casefold()), None)
+
+    @staticmethod
+    def release(service: str, release_id: str) -> Release | None:
+        for song in SONGS:
+            for release in [song.releases[service], *song.decoys[service]]:
+                if release.id == release_id:
+                    return release
+        return None
+
+    def results(self, service: str, query: str) -> list[Release]:
+        song = self.song_for(query)
+        # Decoys first: the right one isn't always the top hit.
+        return [*song.decoys[service], song.releases[service]] if song else []
+
+    # httpx: Spotify and iTunes.
+
     def handle(self, request: httpx.Request) -> httpx.Response:
         self.requests.append(request)
-        for route, respond in self.routes.items():
-            if (request.url.host + request.url.path).startswith(route):
-                return respond(request)
+        route = request.url.host + request.url.path
+        for broken, failure in self.broken.items():
+            if route.startswith(broken):
+                if isinstance(failure, Exception):
+                    raise failure
+                if isinstance(failure, str):
+                    return httpx.Response(200, text=failure)
+                return httpx.Response(failure[0], json=failure[1])
+        if route in self.overrides:
+            return httpx.Response(200, json=self.overrides[route])
+
+        params = request.url.params
+        if route == "accounts.spotify.com/api/token":
+            return httpx.Response(
+                200,
+                json={
+                    "access_token": "BQD-app-token",
+                    "token_type": "Bearer",
+                    "expires_in": 3600,
+                },
+            )
+        if route.startswith("api.spotify.com/v1/tracks/"):
+            release = self.release("spotify", route.rsplit("/", 1)[1])
+            if release is None:
+                return httpx.Response(404, json={"error": {"status": 404}})
+            return httpx.Response(200, json=spotify_track(release))
+        if route == "api.spotify.com/v1/search":
+            items = [spotify_track(r) for r in self.results("spotify", params["q"])]
+            return httpx.Response(
+                200, json={"tracks": {"items": items, "total": len(items)}}
+            )
+        if route == "itunes.apple.com/lookup":
+            release = self.release("apple_music", params["id"])
+            found = [itunes_song(release)] if release else []
+            return httpx.Response(200, json={"resultCount": len(found), "results": found})
+        if route == "itunes.apple.com/search":
+            found = [itunes_song(r) for r in self.results("apple_music", params["term"])]
+            return httpx.Response(200, json={"resultCount": len(found), "results": found})
         return httpx.Response(404, json={"error": {"status": 404}})
+
+    # ytmusicapi.
+
+    def _youtube(self, call: tuple):
+        self.youtube_calls.append(call)
+        if "youtube" in self.broken:
+            raise self.broken["youtube"]
+
+    def search(
+        self, query: str, filter: str | None = None, limit: int = 20
+    ) -> list[dict]:
+        self._youtube(("search", query, filter))
+        if filter == "albums":
+            return self.overrides.get("youtube albums", [])
+        return [youtube_song(r) for r in self.results("youtube_music", query)]
+
+    def get_song(self, video_id: str) -> dict:
+        self._youtube(("get_song", video_id))
+        if video_id in self.videos:
+            return self.videos[video_id]
+        release = self.release("youtube_music", video_id)
+        return youtube_details(release) if release else {"playabilityStatus": {}}
 
 
 @pytest.fixture
@@ -138,12 +396,8 @@ def catalogues(monkeypatch) -> FakeCatalogues:
     monkeypatch.setattr(
         music, "_client", lambda: httpx.Client(transport=httpx.MockTransport(fake.handle))
     )
+    monkeypatch.setattr(music, "_ytmusic", lambda: fake)
     return fake
-
-
-def come_together(catalogues: FakeCatalogues) -> None:
-    catalogues.reply("itunes.apple.com/lookup", 200, COME_TOGETHER_ON_APPLE)
-    catalogues.reply("api.spotify.com/v1/search", 200, COME_TOGETHER_ON_SPOTIFY)
 
 
 def choose(client, user: dict, provider: str) -> dict:
@@ -160,22 +414,144 @@ def native_link(client, user: dict, post: dict):
     )
 
 
+def feed_music(client, user: dict, post: dict) -> dict:
+    return client.get(f"/posts/{post['id']}", headers=user["headers"]).json()["music"]
+
+
 def feed_native(client, user: dict, post: dict) -> dict | None:
-    detail = client.get(f"/posts/{post['id']}", headers=user["headers"]).json()
-    return detail["music"]["native"]
+    return feed_music(client, user, post)["native"]
 
 
-# ── Choosing a service ────────────────────────────────────────────────────────
+# ── Every direction, for five well-known songs ───────────────────────────────
+
+
+@pytest.mark.parametrize(
+    ("song", "source", "target"),
+    [
+        pytest.param(song, source, target, id=f"{song.name}: {source} -> {target}")
+        for song in SONGS
+        for source, target in itertools.permutations(SERVICES, 2)
+    ],
+)
+def test_song_opens_on_every_other_service(
+    client, alice, make_post, catalogues, song, source, target
+):
+    post = make_post(alice["headers"], url=source_url(source, song.releases[source]))
+    choose(client, alice, target)
+
+    response = native_link(client, alice, post)
+
+    assert response.status_code == 200, response.text
+    assert response.json()["status"] == "resolved", response.json()
+    assert response.json()["url"] == resolved_url(target, song.releases[target])
+    assert response.json()["embed_url"] == music.embed_url(response.json()["url"])
+
+
+def test_a_youtube_music_video_opens_on_spotify(client, alice, make_post, catalogues):
+    # The official video: YouTube's title and channel, and a longer running time.
+    catalogues.videos["hTWKbfoikeg"] = youtube_details(
+        Release(
+            "hTWKbfoikeg",
+            "Nirvana - Smells Like Teen Spirit (Official Music Video)",
+            "NirvanaVEVO",
+            279_000,
+        ),
+        video_type="MUSIC_VIDEO_TYPE_OMV",
+    )
+    post = make_post(alice["headers"], url="https://www.youtube.com/watch?v=hTWKbfoikeg")
+    choose(client, alice, "spotify")
+
+    response = native_link(client, alice, post)
+
+    assert (
+        response.json()["url"] == "https://open.spotify.com/track/5ghIJDpPoe3CfHMGu71E6T"
+    )
+
+
+# ── How the services are asked ────────────────────────────────────────────────
+
+
+def test_apple_music_to_spotify_asks_the_way_each_service_expects(
+    client, alice, make_post, catalogues
+):
+    come_together = SONGS[0].releases["apple_music"]
+    post = make_post(alice["headers"], url=source_url("apple_music", come_together))
+    choose(client, alice, "spotify")
+
+    native_link(client, alice, post)
+
+    lookup = catalogues.calls("itunes.apple.com/lookup")[0]
+    assert lookup.url.params["id"] == "1441164430"
+    assert lookup.url.params["country"] == "us"
+    search = catalogues.calls("api.spotify.com/v1/search")[0]
+    assert search.url.params["q"] == "Come Together The Beatles"
+    assert search.url.params["type"] == "track"
+    assert search.headers["Authorization"] == "Bearer BQD-app-token"
+    token = catalogues.calls("accounts.spotify.com/api/token")[0]
+    assert token.headers["Authorization"].startswith("Basic ")
+    assert parse_qs(token.content.decode()) == {"grant_type": ["client_credentials"]}
+
+
+def test_spotify_to_youtube_music_searches_songs(client, alice, make_post, catalogues):
+    bohemian = SONGS[1].releases["spotify"]
+    post = make_post(alice["headers"], url=source_url("spotify", bohemian))
+    choose(client, alice, "youtube_music")
+
+    native_link(client, alice, post)
+
+    assert ("search", "Queen Bohemian Rhapsody", "songs") in catalogues.youtube_calls
+
+
+def test_album_on_spotify_opens_on_youtube_music(client, alice, make_post, catalogues):
+    catalogues.overrides["api.spotify.com/v1/albums/0ETFjACtuP2ADo6LFhL6HN"] = {
+        "album_type": "album",
+        "artists": [{"name": "The Beatles"}],
+        "external_urls": {
+            "spotify": "https://open.spotify.com/album/0ETFjACtuP2ADo6LFhL6HN"
+        },
+        "name": "Abbey Road (Remastered)",
+    }
+    catalogues.overrides["youtube albums"] = [
+        {
+            "resultType": "album",
+            "title": "Abbey Road (Super Deluxe Edition)",
+            "artists": [{"name": "The Beatles"}],
+            "playlistId": "OLAK5uy_deluxe",
+        },
+        {
+            "resultType": "album",
+            "title": "Abbey Road (Remastered)",
+            "artists": [{"name": "The Beatles"}],
+            "playlistId": "OLAK5uy_abbeyroad",
+        },
+    ]
+    post = make_post(
+        alice["headers"], url="https://open.spotify.com/album/0ETFjACtuP2ADo6LFhL6HN"
+    )
+    choose(client, alice, "youtube_music")
+
+    response = native_link(client, alice, post)
+
+    assert (
+        response.json()["url"]
+        == "https://music.youtube.com/playlist?list=OLAK5uy_abbeyroad"
+    )
+    assert response.json()["embed_url"] == (
+        "https://www.youtube.com/embed/videoseries?list=OLAK5uy_abbeyroad&playsinline=1"
+    )
+
+
+# ── What posts say ────────────────────────────────────────────────────────────
 
 
 def test_native_provider_is_saved_on_the_account(client, alice):
     me = client.get("/users/me", headers=alice["headers"]).json()
     assert me["native_provider"] is None
 
-    assert choose(client, alice, "apple_music")["native_provider"] == "apple_music"
+    assert choose(client, alice, "youtube_music")["native_provider"] == "youtube_music"
     assert (
         client.get("/users/me", headers=alice["headers"]).json()["native_provider"]
-        == "apple_music"
+        == "youtube_music"
     )
     # It is a private setting, not part of the public profile.
     assert "native_provider" not in client.get(f"/users/{alice['user']['id']}").json()
@@ -186,9 +562,10 @@ def test_native_provider_can_be_cleared(client, alice):
     assert choose(client, alice, "")["native_provider"] is None
 
 
-def test_unknown_native_provider_is_rejected(client, alice):
+@pytest.mark.parametrize("provider", ["napster", "bandcamp", "soundcloud", "tidal"])
+def test_only_services_music_can_be_matched_into_can_be_chosen(client, alice, provider):
     response = client.patch(
-        "/users/me", json={"native_provider": "napster"}, headers=alice["headers"]
+        "/users/me", json={"native_provider": provider}, headers=alice["headers"]
     )
     assert response.status_code == 422
     assert "Unknown music service" in response.text
@@ -200,14 +577,15 @@ def test_editing_the_profile_keeps_the_native_provider(client, alice):
     assert response.json()["native_provider"] == "apple_music"
 
 
-# ── What posts say before anything is looked up ───────────────────────────────
-
-
-def test_without_a_native_provider_posts_are_unchanged(client, alice, make_post):
+def test_without_a_native_provider_posts_show_the_original_player(
+    client, alice, make_post
+):
     post = make_post(alice["headers"])
 
     assert post["music"]["native"] is None
-    assert feed_native(client, alice, post) is None
+    assert post["music"]["embed_url"] == (
+        "https://open.spotify.com/embed/track/4cOdK2wGLETKBW3PvgPWqT"
+    )
     assert client.get("/posts/").json()["items"][0]["music"]["native"] is None
 
 
@@ -222,146 +600,142 @@ def test_each_viewer_sees_their_own_service(client, alice, bob, make_post):
         "provider": "apple_music",
         "provider_name": "Apple Music",
         "url": None,
+        "embed_url": None,
     }
 
     # Already on Bob's service: it opens as shared.
     bobs = client.get("/posts/", headers=bob["headers"]).json()["items"][0]["music"]
     assert bobs["native"]["status"] == "resolved"
     assert bobs["native"]["url"] == SPOTIFY_TRACK
+    assert bobs["native"]["embed_url"] == (
+        "https://open.spotify.com/embed/track/4cOdK2wGLETKBW3PvgPWqT"
+    )
 
 
 @pytest.mark.parametrize(
-    ("url", "service"),
+    ("url", "service", "player"),
     [
-        (BANDCAMP_TRACK, "apple_music"),
-        (SOUNDCLOUD_TRACK, "spotify"),
-        (SPOTIFY_PLAYLIST, "apple_music"),
-        (SPOTIFY_TRACK, "bandcamp"),
-        (DEEZER_TRACK, "spotify"),
-        (SPOTIFY_TRACK, "youtube_music"),
+        (
+            SOUNDCLOUD_TRACK,
+            "spotify",
+            "https://w.soundcloud.com/player/?url=https%3A%2F%2Fsoundcloud.com%2Fartist"
+            "%2Fsome-song&color=%23ff5500&visual=false&show_comments=false",
+        ),
+        (BANDCAMP_TRACK, "apple_music", None),  # no player id scraped in tests
+        (
+            SPOTIFY_PLAYLIST,
+            "apple_music",
+            "https://open.spotify.com/embed/playlist/37i9dQZF1DXcBWIGoYBM5M",
+        ),
+        (
+            YOUTUBE_PLAYLIST,
+            "spotify",
+            "https://www.youtube.com/embed/videoseries?list=PL4fGSI1pDJn6puJdseH2Rt9sMvt9E2M4i"
+            "&playsinline=1",
+        ),
     ],
 )
-def test_untranslatable_music_stays_on_its_own_link(
-    client, alice, make_post, catalogues, url, service
+def test_untranslatable_music_stays_on_its_own_player(
+    client, alice, make_post, catalogues, url, service, player
 ):
     post = make_post(alice["headers"], url=url)
+    catalogues.requests.clear()  # posting Bandcamp reads its page for the player
     choose(client, alice, service)
 
-    assert feed_native(client, alice, post)["status"] == "original"
+    music_item = feed_music(client, alice, post)
+    assert music_item["native"]["status"] == "original"
+    assert music_item["embed_url"] == player
 
     response = native_link(client, alice, post)
-    assert response.status_code == 200
     assert response.json()["status"] == "original"
-    assert response.json()["url"] is None
-    assert catalogues.requests == [], "nothing to look up"
+    assert catalogues.requests == [] and catalogues.youtube_calls == [], (
+        "nothing to look up"
+    )
+
+
+def test_bandcamp_player_comes_from_its_page(client, alice, monkeypatch):
+    monkeypatch.setattr(
+        music, "fetch_metadata", lambda link: MusicMetadata(embed_url=BANDCAMP_PLAYER)
+    )
+
+    response = client.post(
+        "/posts/",
+        json={
+            "music_url": BANDCAMP_TRACK,
+            "title": "Some Song",
+            "artist_name": "Artist",
+            "embed_url": "https://evil.example/player",
+        },
+        headers=alice["headers"],
+    )
+
+    assert response.json()["music"]["embed_url"] == BANDCAMP_PLAYER
+
+
+def test_a_bandcamp_page_cannot_embed_anything_else(client, alice, monkeypatch):
+    monkeypatch.setattr(
+        music,
+        "fetch_metadata",
+        lambda link: MusicMetadata(embed_url="https://evil.example/player"),
+    )
+
+    response = client.post(
+        "/posts/",
+        json={"music_url": BANDCAMP_TRACK, "title": "Some Song"},
+        headers=alice["headers"],
+    )
+
+    assert response.json()["music"]["embed_url"] is None
 
 
 # ── Looking it up ─────────────────────────────────────────────────────────────
 
 
-def test_come_together_on_apple_music_opens_for_a_spotify_listener(
-    client, alice, make_post, catalogues
-):
-    come_together(catalogues)
-    post = make_post(alice["headers"], url=APPLE_COME_TOGETHER)
-    choose(client, alice, "spotify")
-
-    response = native_link(client, alice, post)
-
-    # The remaster, not the 2019 mix or Aerosmith's cover.
-    assert response.json() == {
-        "status": "resolved",
-        "provider": "spotify",
-        "provider_name": "Spotify",
-        "url": SPOTIFY_COME_TOGETHER,
-    }
-    lookup = catalogues.calls("itunes.apple.com/lookup")[0]
-    assert lookup.url.params["id"] == "1441164430"
-    assert lookup.url.params["country"] == "us"
-    search = catalogues.calls("api.spotify.com/v1/search")[0]
-    assert search.url.params["q"] == 'track:"Come Together" artist:"The Beatles"'
-    assert search.headers["Authorization"] == "Bearer BQD-app-token"
-
-
-def test_spotify_track_opens_on_apple_music(client, alice, make_post, catalogues):
-    catalogues.reply(
-        "api.spotify.com/v1/tracks/4cOdK2wGLETKBW3PvgPWqT",
-        200,
-        spotify_track("4cOdK2wGLETKBW3PvgPWqT", "Never Gonna Give You Up",
-                      ["Rick Astley"], 213_573),
+def test_a_lookup_is_cached_per_service(client, alice, bob, make_post, catalogues):
+    post = make_post(
+        alice["headers"],
+        url=SPOTIFY_TRACK.replace("4cOdK2wGLETKBW3PvgPWqT", "2EqlS6tkEnglzr7tkKAAYD"),
     )
-    catalogues.reply(
-        "itunes.apple.com/search",
-        200,
-        itunes(
-            itunes_song(1, "Never Gonna Give You Up (Karaoke Version)", "Party Band",
-                        213_000),
-            itunes_song(2, "Never Gonna Give You Up", "Rick Astley", 250_000),  # live
-            itunes_song(1558534271, "Never Gonna Give You Up", "Rick Astley", 213_573),
-        ),
-    )
-    post = make_post(alice["headers"], url=SPOTIFY_TRACK)
     choose(client, alice, "apple_music")
+    choose(client, bob, "youtube_music")
 
-    response = native_link(client, alice, post)
-
-    assert response.json()["status"] == "resolved"
-    assert "i=1558534271" in response.json()["url"]
-    search = catalogues.calls("itunes.apple.com/search")[0]
-    assert search.url.params["term"] == "Rick Astley Never Gonna Give You Up"
-    assert search.url.params["entity"] == "song"
-
-    # Cached: the timeline knows it now, and nobody is asked again.
-    asked = len(catalogues.requests)
-    assert feed_native(client, alice, post)["url"] == response.json()["url"]
     assert native_link(client, alice, post).json()["status"] == "resolved"
-    assert len(catalogues.requests) == asked
+    asked = len(catalogues.requests)
+    assert feed_native(client, alice, post)["status"] == "resolved"
+    assert native_link(client, alice, post).json()["status"] == "resolved"
+    assert len(catalogues.requests) == asked, "Alice's answer is remembered"
+
+    # Bob's service is looked up on its own.
+    assert feed_native(client, bob, post)["status"] == "pending"
+    assert native_link(client, bob, post).json()["status"] == "resolved"
 
 
-def test_album_on_apple_music_opens_on_spotify(client, alice, make_post, catalogues):
-    catalogues.reply(
-        "itunes.apple.com/lookup",
-        200,
-        itunes({
-            "wrapperType": "collection",
-            "collectionType": "Album",
-            "artistName": "The Beatles",
-            "collectionName": "Abbey Road (Remastered)",
-            "collectionViewUrl": APPLE_ABBEY_ROAD + "?uo=4",
-            "trackCount": 17,
-        }),
+def test_one_service_failing_doesnt_block_the_others(
+    client, alice, bob, make_post, catalogues
+):
+    catalogues.break_route("youtube", RuntimeError("YouTube changed its API"))
+    post = make_post(
+        alice["headers"], url=source_url("apple_music", SONGS[0].releases["apple_music"])
     )
-    catalogues.reply(
-        "api.spotify.com/v1/search",
-        200,
-        spotify_search(
-            "albums",
-            spotify_album("0deluxe", "Abbey Road (Super Deluxe Edition)", "The Beatles"),
-            spotify_album(
-                "0ETFjACtuP2ADo6LFhL6HN", "Abbey Road (Remastered)", "The Beatles"
-            ),
-        ),
-    )
-    post = make_post(alice["headers"], url=APPLE_ABBEY_ROAD)
     choose(client, alice, "spotify")
+    choose(client, bob, "youtube_music")
 
-    response = native_link(client, alice, post)
-
-    assert response.json()["url"] == "https://open.spotify.com/album/0ETFjACtuP2ADo6LFhL6HN"
-    search = catalogues.calls("api.spotify.com/v1/search")[0]
-    assert search.url.params["q"] == 'album:"Abbey Road" artist:"The Beatles"'
-    assert search.url.params["type"] == "album"
+    assert native_link(client, bob, post).status_code == 503
+    assert native_link(client, alice, post).json()["status"] == "resolved"
+    assert feed_native(client, bob, post)["status"] == "pending"
 
 
-def test_no_match_reads_as_unavailable(client, alice, make_post, catalogues):
-    come_together(catalogues)
-    catalogues.reply(
-        "api.spotify.com/v1/search",
-        200,
-        spotify_search("tracks", spotify_track("0cover", "Come Together", ["Aerosmith"],
-                                               225_000)),
+def test_no_match_reads_as_unavailable_and_says_why_in_the_log(
+    client, alice, make_post, catalogues, caplog
+):
+    caplog.set_level(logging.INFO, logger="src.music")
+    # Only covers and a live take.
+    catalogues.overrides["api.spotify.com/v1/search"] = {
+        "tracks": {"items": [spotify_track(r) for r in SONGS[0].decoys["spotify"]]}
+    }
+    post = make_post(
+        alice["headers"], url=source_url("apple_music", SONGS[0].releases["apple_music"])
     )
-    post = make_post(alice["headers"], url=APPLE_COME_TOGETHER)
     choose(client, alice, "spotify")
 
     response = native_link(client, alice, post)
@@ -369,67 +743,26 @@ def test_no_match_reads_as_unavailable(client, alice, make_post, catalogues):
     assert response.json()["status"] == "unavailable"
     assert response.json()["url"] is None
     assert feed_native(client, alice, post)["status"] == "unavailable"
+    assert "No spotify match for" in caplog.text
+    assert "'Come Together - 2019 Mix'" in caplog.text
 
 
-@pytest.mark.parametrize(
-    "candidate",
-    [
-        # A cover by someone else.
-        {"artists": [{"name": "Some Tribute Band"}]},
-        # A different recording.
-        {"name": "Come Together - Live"},
-        # Same title and artist, but 20 seconds longer: another take.
-        {"duration_ms": 279_946},
-    ],
-)
-def test_a_doubtful_match_is_not_trusted(client, alice, make_post, catalogues, candidate):
-    come_together(catalogues)
-    only = copy.deepcopy(COME_TOGETHER_ON_SPOTIFY["tracks"]["items"][2])
-    only.update(candidate)
-    catalogues.reply("api.spotify.com/v1/search", 200, spotify_search("tracks", only))
-    post = make_post(alice["headers"], url=APPLE_COME_TOGETHER)
-    choose(client, alice, "spotify")
-
-    assert native_link(client, alice, post).json()["status"] == "unavailable"
-
-
-@pytest.mark.parametrize(
-    ("url", "service", "route", "answer"),
-    [
-        # Spotify doesn't know the track.
-        (SPOTIFY_TRACK, "apple_music", "api.spotify.com/v1/tracks/", None),
-        # Neither does Apple.
-        (APPLE_COME_TOGETHER, "spotify", "itunes.apple.com/lookup", itunes()),
-        # Apple knows it, but without an artist there's nothing to check against.
-        (
-            APPLE_COME_TOGETHER,
-            "spotify",
-            "itunes.apple.com/lookup",
-            itunes({**COME_TOGETHER_ON_APPLE["results"][0], "artistName": None}),
-        ),
-    ],
-)
 def test_missing_original_metadata_reads_as_unavailable(
-    client, alice, make_post, catalogues, url, service, route, answer
+    client, alice, make_post, catalogues
 ):
-    come_together(catalogues)
-    if answer is None:
-        catalogues.reply(route, 404, {"error": {"status": 404}})
-    else:
-        catalogues.reply(route, 200, answer)
-    post = make_post(alice["headers"], url=url)
-    choose(client, alice, service)
+    post = make_post(alice["headers"], url="https://open.spotify.com/track/0unknown")
+    choose(client, alice, "apple_music")
 
     assert native_link(client, alice, post).json()["status"] == "unavailable"
-    assert catalogues.calls("api.spotify.com/v1/search") == []
     assert catalogues.calls("itunes.apple.com/search") == []
 
 
 def test_the_spotify_token_is_reused(client, alice, make_post, catalogues):
-    come_together(catalogues)
-    first = make_post(alice["headers"], url=APPLE_COME_TOGETHER)
+    first = make_post(
+        alice["headers"], url=source_url("apple_music", SONGS[0].releases["apple_music"])
+    )
     second = make_post(
-        alice["headers"], url="https://music.apple.com/us/song/come-together/1441164999"
+        alice["headers"], url=source_url("apple_music", SONGS[1].releases["apple_music"])
     )
     choose(client, alice, "spotify")
 
@@ -437,18 +770,16 @@ def test_the_spotify_token_is_reused(client, alice, make_post, catalogues):
     native_link(client, alice, second)
 
     assert len(catalogues.calls("api.spotify.com/v1/search")) == 2
-    token = catalogues.calls("accounts.spotify.com/api/token")
-    assert len(token) == 1
-    assert token[0].headers["Authorization"].startswith("Basic ")
-    assert token[0].content == b"grant_type=client_credentials"
+    assert len(catalogues.calls("accounts.spotify.com/api/token")) == 1
 
 
 def test_missing_spotify_credentials_are_logged(
     client, alice, make_post, catalogues, monkeypatch, caplog
 ):
-    come_together(catalogues)
     monkeypatch.setattr(music.settings, "spotify_client_secret", None)
-    post = make_post(alice["headers"], url=APPLE_COME_TOGETHER)
+    post = make_post(
+        alice["headers"], url=source_url("apple_music", SONGS[0].releases["apple_music"])
+    )
     choose(client, alice, "spotify")
 
     assert native_link(client, alice, post).status_code == 503
@@ -459,12 +790,27 @@ def test_missing_spotify_credentials_are_logged(
 @pytest.mark.parametrize(
     ("route", "failure", "logged"),
     [
-        ("accounts.spotify.com/api/token", (400, {"error": "invalid_client"}),
-         "accounts.spotify.com answered 400"),
-        ("api.spotify.com/v1/search", (429, {"error": {"status": 429}}),
-         "api.spotify.com answered 429"),
-        ("api.spotify.com/v1/search", (500, {"error": {"status": 500}}),
-         "api.spotify.com answered 500"),
+        (
+            "accounts.spotify.com/api/token",
+            (400, {"error": "invalid_client"}),
+            "accounts.spotify.com answered 400",
+        ),
+        # A search Spotify refuses is an error, not "no match".
+        (
+            "api.spotify.com/v1/search",
+            (400, {"error": {"status": 400}}),
+            "api.spotify.com answered 400",
+        ),
+        (
+            "api.spotify.com/v1/search",
+            (429, {"error": {"status": 429}}),
+            "api.spotify.com answered 429",
+        ),
+        (
+            "api.spotify.com/v1/search",
+            (500, {"error": {"status": 500}}),
+            "api.spotify.com answered 500",
+        ),
         ("itunes.apple.com/lookup", (503, None), "itunes.apple.com answered 503"),
         ("itunes.apple.com/lookup", "<html>maintenance</html>", "Unexpected answer"),
         ("itunes.apple.com/lookup", httpx.ReadTimeout("timed out"), "unreachable"),
@@ -474,14 +820,9 @@ def test_missing_spotify_credentials_are_logged(
 def test_lookup_failures_are_reported_and_retried(
     client, alice, make_post, catalogues, caplog, route, failure, logged
 ):
-    come_together(catalogues)
-    if isinstance(failure, Exception):
-        catalogues.fail(route, failure)
-    elif isinstance(failure, str):
-        catalogues.reply(route, 200, text=failure)
-    else:
-        catalogues.reply(route, *failure)
-    post = make_post(alice["headers"], url=APPLE_COME_TOGETHER)
+    url = source_url("apple_music", SONGS[0].releases["apple_music"])
+    catalogues.break_route(route, failure)
+    post = make_post(alice["headers"], url=url)
     choose(client, alice, "spotify")
 
     response = native_link(client, alice, post)
@@ -489,19 +830,19 @@ def test_lookup_failures_are_reported_and_retried(
     assert response.status_code == 503
     assert response.json()["detail"].startswith("Couldn't look this up on Spotify")
     # The reason goes to the server log, not to the client.
-    assert f"Lookup of {APPLE_COME_TOGETHER} failed" in caplog.text
+    assert f"Lookup of {url} failed" in caplog.text
     assert logged in caplog.text
-    # Not remembered as "unavailable": the next tap asks again and succeeds.
+    # Not remembered as "unavailable": the next time asks again and succeeds.
     assert feed_native(client, alice, post)["status"] == "pending"
-    catalogues.reply("accounts.spotify.com/api/token", 200, SPOTIFY_TOKEN)
-    come_together(catalogues)
+    catalogues.fix()
     assert native_link(client, alice, post).json()["status"] == "resolved"
 
 
 def test_unavailable_is_asked_again_after_a_day(client, alice, make_post, catalogues):
-    come_together(catalogues)
-    catalogues.reply("api.spotify.com/v1/search", 200, spotify_search("tracks"))
-    post = make_post(alice["headers"], url=APPLE_COME_TOGETHER)
+    catalogues.overrides["api.spotify.com/v1/search"] = {"tracks": {"items": []}}
+    post = make_post(
+        alice["headers"], url=source_url("apple_music", SONGS[0].releases["apple_music"])
+    )
     choose(client, alice, "spotify")
     assert native_link(client, alice, post).json()["status"] == "unavailable"
 
@@ -511,7 +852,7 @@ def test_unavailable_is_asked_again_after_a_day(client, alice, make_post, catalo
         db.commit()
 
     assert feed_native(client, alice, post)["status"] == "pending"
-    come_together(catalogues)
+    del catalogues.overrides["api.spotify.com/v1/search"]
     assert native_link(client, alice, post).json()["status"] == "resolved"
 
 
@@ -537,7 +878,7 @@ def test_native_link_needs_a_signed_in_listener_with_a_service(client, alice, ma
 
 # ── Matching rules ────────────────────────────────────────────────────────────
 
-APPLE_LINK = parse_music_url(APPLE_COME_TOGETHER)
+APPLE_LINK = parse_music_url("https://music.apple.com/us/album/x/1?i=2")
 
 
 def track(title: str, artist: str, duration_ms: int | None = 200_000) -> MusicMetadata:
@@ -551,24 +892,38 @@ def track(title: str, artist: str, duration_ms: int | None = 200_000) -> MusicMe
             track("Come Together - Remastered 2009", "The Beatles"),
             track("Come Together (Remastered 2009)", "The Beatles"),
         ),
-        # Spotify tags remasters, Apple Music usually doesn't.
-        (
-            track("Come Together - Remastered 2009", "The Beatles"),
-            track("Come Together", "The Beatles", 201_500),
-        ),
         (
             track("Heroes - 2017 Remaster", "David Bowie"),
             track('"Heroes"', "David Bowie"),
         ),
         (
-            track("Get Lucky (feat. Pharrell Williams & Nile Rodgers)",
-                  "Daft Punk, Pharrell Williams, Nile Rodgers"),
+            track(
+                "Get Lucky (feat. Pharrell Williams & Nile Rodgers)",
+                "Daft Punk, Pharrell Williams, Nile Rodgers",
+            ),
             track("Get Lucky", "Daft Punk"),
         ),
         (track("Café del Mar", "Energy 52"), track("Cafe Del Mar", "Energy 52")),
+        (track("Rock & Roll", "Led Zeppelin"), track("Rock and Roll", "Led Zeppelin")),
         (track("Bohemian Rhapsody", "Queen"), track("bohemian rhapsody", "QUEEN")),
-        # A length on only one side isn't held against it.
-        (track("Bohemian Rhapsody", "Queen"), track("Bohemian Rhapsody", "Queen", None)),
+        # Punctuation and accents.
+        (track("Don't Stop Me Now", "Queen"), track("Dont Stop Me Now", "Queen")),
+        (track("Beyoncé - Halo", "Beyoncé"), track("Beyonce - Halo", "Beyonce")),
+        # Spelled a little differently: only a fuzzy comparison accepts these.
+        (
+            track("Another Brick in the Wall, Pt. 2", "Pink Floyd"),
+            track("Another Brick in the Wall (Part 2)", "Pink Floyd"),
+        ),
+        (
+            track("Sgt. Pepper's Lonely Hearts Club Band", "The Beatles"),
+            track("Sgt. Pepper's Lonely Heart Club Band", "The Beatles"),
+        ),
+        # Lengths a few seconds apart, or unknown on one side.
+        (
+            track("Hallelujah", "Jeff Buckley"),
+            track("Hallelujah", "Jeff Buckley", 204_000),
+        ),
+        (track("Hallelujah", "Jeff Buckley"), track("Hallelujah", "Jeff Buckley", None)),
     ],
 )
 def test_the_same_song_spelled_differently_matches(source, candidate):
@@ -579,19 +934,19 @@ def test_the_same_song_spelled_differently_matches(source, candidate):
 @pytest.mark.parametrize(
     ("source", "candidate"),
     [
-        # Different mix.
         (
             track("Come Together - Remastered 2009", "The Beatles"),
             track("Come Together (2019 Mix)", "The Beatles"),
         ),
-        # Same title, different artist: a cover.
         (track("Hallelujah", "Jeff Buckley"), track("Hallelujah", "Leonard Cohen")),
-        # Same title and artist, 10 seconds apart: an edit or another take.
         (
             track("Hallelujah", "Jeff Buckley"),
-            track("Hallelujah", "Jeff Buckley", 210_000),
+            track("Hallelujah", "Jeff Buckley", 215_000),
         ),
-        # Nothing to compare.
+        (
+            track("Blinding Lights", "The Weeknd"),
+            track("Blinding Lights - Remix", "The Weeknd"),
+        ),
         (track("", "Jeff Buckley"), track("", "Jeff Buckley")),
     ],
 )
@@ -600,17 +955,17 @@ def test_different_music_does_not_match(source, candidate):
 
 
 def test_an_album_is_not_a_song():
-    album = parse_music_url(APPLE_ABBEY_ROAD)
+    album = parse_music_url("https://music.apple.com/us/album/abbey-road/1441164426")
     song = track("Abbey Road", "The Beatles")
     assert music.best_match(song, ItemType.TRACK, [(album, song)]) is None
 
 
-def test_the_closest_length_wins():
+def test_the_closest_title_then_length_wins():
     album_cut = parse_music_url("https://open.spotify.com/track/album")
     compilation = parse_music_url("https://open.spotify.com/track/compilation")
     candidates = [
         (compilation, track("Come Together", "The Beatles", 202_500)),
         (album_cut, track("Come Together", "The Beatles", 200_100)),
     ]
-    assert music.best_match(track("Come Together", "The Beatles"), ItemType.TRACK,
-                            candidates) == album_cut
+    source = track("Come Together", "The Beatles")
+    assert music.best_match(source, ItemType.TRACK, candidates) == album_cut

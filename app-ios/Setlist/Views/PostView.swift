@@ -25,20 +25,20 @@ struct PostRow: View {
                 .buttonStyle(.plain)
             }
 
-            Button(action: onOpenPost) {
-                VStack(alignment: .leading, spacing: Metrics.rowSpacing) {
-                    if !post.caption.isEmpty {
-                        Text(post.caption)
-                            .font(.body)
-                            .foregroundStyle(.primary)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .multilineTextAlignment(.leading)
-                    }
-                    MusicCardView(music: post.music)
+            if !post.caption.isEmpty {
+                Button(action: onOpenPost) {
+                    Text(post.caption)
+                        .font(.body)
+                        .foregroundStyle(.primary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .multilineTextAlignment(.leading)
+                        .contentShape(Rectangle())
                 }
-                .contentShape(Rectangle())
+                .buttonStyle(.plain)
             }
-            .buttonStyle(.plain)
+
+            // Outside the button: taps belong to the embedded player.
+            MusicCardView(music: post.music)
 
             HStack(spacing: 20) {
                 LikeButton(isLiked: post.isLiked, count: post.likesCount, action: onLike)

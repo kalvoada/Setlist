@@ -32,8 +32,9 @@ def read_native_link(music_id: int, current_user: CurrentUser, db: DBSession):
     if native.status != "pending":
         return native
 
+    target = music_links.Provider(native.provider)
     try:
-        links = music_links.resolve_links(item.url)
+        url = music_links.resolve_link(item.url, target)
     except music_links.LinkResolutionError as exc:
         logger.warning("Lookup of %s failed: %s", item.url, exc)
         raise HTTPException(
@@ -42,5 +43,5 @@ def read_native_link(music_id: int, current_user: CurrentUser, db: DBSession):
             "Try again in a moment.",
         ) from exc
 
-    posts_crud.save_provider_links(db, item, links)
+    posts_crud.save_provider_link(db, item, target.value, url)
     return presenters.native_link(item, current_user.native_provider)

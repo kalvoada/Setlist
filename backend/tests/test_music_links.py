@@ -64,8 +64,18 @@ from src.music import ItemType, Provider, UnsupportedMusicLinkError, parse_music
             ItemType.ALBUM,
             "artist.bandcamp.com/album/some-record",
         ),
-        ("https://tidal.com/browse/track/12345", Provider.TIDAL, ItemType.TRACK, "12345"),
-        ("https://www.deezer.com/en/track/3135556", Provider.DEEZER, ItemType.TRACK, "3135556"),
+        (
+            "https://music.youtube.com/playlist?list=OLAK5uy_kunInnOpcKECWIBQGB0Qj6ZjquxDvfckg",
+            Provider.YOUTUBE_MUSIC,
+            ItemType.ALBUM,
+            "OLAK5uy_kunInnOpcKECWIBQGB0Qj6ZjquxDvfckg",
+        ),
+        (
+            "https://music.youtube.com/playlist?list=PL4fGSI1pDJn6puJdseH2Rt9sMvt9E2M4i",
+            Provider.YOUTUBE_MUSIC,
+            ItemType.PLAYLIST,
+            "PL4fGSI1pDJn6puJdseH2Rt9sMvt9E2M4i",
+        ),
     ],
 )
 def test_supported_links(url, provider, item_type, item_id):
@@ -86,6 +96,9 @@ def test_supported_links(url, provider, item_type, item_id):
         "https://open.spotify.com/",
         "https://music.apple.com/us/",
         "https://artist.bandcamp.com/merch",
+        # No longer supported.
+        "https://tidal.com/browse/track/12345",
+        "https://www.deezer.com/en/track/3135556",
         "https://soundcloud.com/",
     ],
 )

@@ -2,6 +2,8 @@
 Setlist API application entry point.
 """
 
+import logging
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -9,13 +11,17 @@ from src.config import settings
 from src.database.database import Base, engine
 from src.routers import auth, comments, music, posts, users
 
+# The app's own INFO lines (e.g. why a song had no match) next to uvicorn's.
+logging.basicConfig(format="%(levelname)s:     %(name)s: %(message)s")
+logging.getLogger("src").setLevel(logging.INFO)
+
 DESCRIPTION = """
 The backend for **Setlist**, a social app for sharing music.
 
 * Sign up / sign in with a bearer token
 * Follow people and read a feed of what they are listening to
 * Post a song, album or playlist from Spotify, Apple Music, YouTube Music,
-  SoundCloud, TIDAL, Deezer or Bandcamp
+  SoundCloud or Bandcamp
 * Open shared music on your own streaming service
 * Like and comment on posts
 * Edit your profile and account settings
