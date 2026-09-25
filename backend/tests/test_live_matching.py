@@ -21,6 +21,7 @@ import time
 
 import pytest
 
+import seed
 from src import music
 from src.config import Settings
 from src.music import ItemType, MusicMetadata, Provider
@@ -87,3 +88,15 @@ def test_song_opens_on_the_other_service(title, artist, source, target):
     link = music.parse_music_url(resolved)
     assert link.provider is target
     assert link.item_type is ItemType.TRACK
+
+
+@pytest.mark.parametrize("url", [url for url, _, _ in seed.FIXED_MUSIC])
+def test_the_seeds_soundcloud_and_bandcamp_links_are_real(url):
+    link = music.parse_music_url(url)
+
+    metadata = music.fetch_metadata(link)
+
+    player = music.embed_url(url, metadata.embed_url)
+    print(f"\n  {url}: {metadata.title!r}, player {player}")
+    assert metadata.title, f"{url} didn't answer; is the link right?"
+    assert player, f"no player for {url}"

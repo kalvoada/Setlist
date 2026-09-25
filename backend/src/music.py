@@ -5,6 +5,8 @@ Parsing and enrichment of streaming-service links.
 from __future__ import annotations
 
 import functools
+import html as html_entities
+import json
 import logging
 import re
 import time
@@ -211,11 +213,9 @@ def _parse_youtube(host: str, path: str, query: str, url: str) -> MusicLink:
 
     if path.startswith("/playlist") and params.get("list"):
         list_id = params["list"][0]
-        # YouTube Music albums are playlists whose id starts with OLAK5uy_.
-        is_album = list_id.startswith("OLAK5uy_")
         return MusicLink(
             Provider.YOUTUBE_MUSIC,
-            ItemType.ALBUM if is_album else ItemType.PLAYLIST,
+            ItemType.ALBUM if _is_album(list_id) else ItemType.PLAYLIST,
             list_id,
             f"https://music.youtube.com/playlist?list={list_id}",
         )
@@ -319,7 +319,42 @@ def _fetch_opengraph(link: MusicLink) -> MusicMetadata:
         response = client.get(link.url)
         response.raise_for_status()
 
-    return parse_opengraph(response.text[:_MAX_HTML_BYTES])
+    page = response.text[:_MAX_HTML_BYTES]
+    metadata = parse_opengraph(page)
+    if link.provider is Provider.BANDCAMP:
+        metadata.embed_url = bandcamp_player(page)
+    return metadata
+
+
+_BANDCAMP_PLAYER_ID = re.compile(r"/EmbeddedPlayer/(?:v=2/)?(track|album)=(\d+)")
+_BANDCAMP_PROPERTIES = re.compile(
+    r'<meta[^>]+name=["\']bc-page-properties["\'][^>]*content=["\']([^"\']+)["\']',
+    re.IGNORECASE,
+)
+
+
+def bandcamp_player(page: str) -> Optional[str]:
+    """
+    Bandcamp's player for the track or album a page shows. It needs the numeric
+    id, which only the page has: in its og:video player or its page properties.
+    """
+    kind = item_id = None
+    video = parse_opengraph(page).embed_url or ""
+    if match := _BANDCAMP_PLAYER_ID.search(video):
+        kind, item_id = match.groups()
+    elif match := _BANDCAMP_PROPERTIES.search(page):
+        try:
+            properties = json.loads(html_entities.unescape(match.group(1)))
+        except ValueError:
+            return None
+        kind = {"t": "track", "a": "album"}.get(properties.get("item_type"))
+        item_id = properties.get("item_id")
+    if not kind or not str(item_id).isdigit():
+        return None
+    return (
+        f"https://bandcamp.com/EmbeddedPlayer/{kind}={item_id}"
+        "/size=large/tracklist=false/artwork=small/"
+    )
 
 
 def parse_opengraph(html: str) -> MusicMetadata:
@@ -352,8 +387,8 @@ def embed_url(url: str, scraped: Optional[str] = None) -> Optional[str]:
     """
     The service's own embeddable player for ``url``, if it has one.
 
-    ``scraped`` is the og:video a Bandcamp page advertised; only its own player
-    is accepted from it.
+    ``scraped`` is the player :func:`bandcamp_player` found on a Bandcamp page;
+    only Bandcamp's own player is accepted from it.
     """
     try:
         link = parse_music_url(url)
@@ -368,16 +403,17 @@ def embed_url(url: str, scraped: Optional[str] = None) -> Optional[str]:
         song = parse_qs(parsed.query).get("i")
         query = f"?i={song[0]}" if song else ""
         return f"https://embed.music.apple.com{parsed.path}{query}"
-    if link.provider is Provider.YOUTUBE_MUSIC:
-        if link.item_type is ItemType.TRACK:
-            return f"https://www.youtube.com/embed/{item_id}?playsinline=1"
-        return f"https://www.youtube.com/embed/videoseries?list={item_id}&playsinline=1"
+    # YouTube Music has no player of its own to embed, and YouTube's video
+    # player refuses many songs outside YouTube; the app draws its card instead.
     if link.provider is Provider.SOUNDCLOUD:
+        # The artwork-led player; the classic one crams its waveform on a phone.
         return "https://w.soundcloud.com/player/?" + urlencode({
             "url": f"https://soundcloud.com/{item_id}",
-            "color": "#ff5500",
-            "visual": "false",
+            "visual": "true",
+            "hide_related": "true",
             "show_comments": "false",
+            "show_reposts": "false",
+            "show_teaser": "false",
         })
     if (
         link.provider is Provider.BANDCAMP
@@ -425,8 +461,9 @@ _DURATION_TOLERANCE_MS = 5000
 # rapidfuzz similarity (0-100) of the normalised titles and artist names.
 _MIN_SIMILARITY = 90
 
-# Playlists and artist pages are specific to one service.
-_TRANSLATABLE_TYPES = {ItemType.TRACK, ItemType.ALBUM}
+# Songs and albums exist on every service. Playlists and artist pages are
+# specific to one, so they can't be shared.
+SHAREABLE_TYPES = {ItemType.TRACK, ItemType.ALBUM}
 
 _spotify_token: Optional[tuple[str, float]] = None  # (token, expires at)
 _ytmusic_client: Optional[YTMusic] = None
@@ -443,12 +480,17 @@ def can_translate(source: str, target: str, item_type: str) -> bool:
         kind = ItemType(item_type)
     except ValueError:
         return False
-    return kind in _TRANSLATABLE_TYPES and providers <= _CATALOGUES.keys()
+    return kind in SHAREABLE_TYPES and providers <= _CATALOGUES.keys()
 
 
-def resolve_link(url: str, target: Provider) -> Optional[str]:
+def resolve_link(
+    url: str, target: Provider, known: Optional[MusicMetadata] = None
+) -> Optional[str]:
     """
     The same song or album on ``target``, or None when it has no verified match.
+
+    ``known`` is what the post already says about it (title, artist); it's used
+    when the item's own service can't describe it.
 
     Raises :class:`LinkResolutionError` when the answer is unknown for now.
     """
@@ -466,8 +508,13 @@ def resolve_link(url: str, target: Provider) -> Optional[str]:
         with _client() as client:
             lookup, _ = _CATALOGUES[link.provider]
             source = lookup(client, link)
-            if source is None or not source.title or not source.artist_name:
-                logger.info("Can't match %s: its service doesn't describe it", url)
+            if not _describes(source):
+                logger.info(
+                    "%s doesn't know %s; using the post's title", link.provider, url
+                )
+                source = known
+            if not _describes(source):
+                logger.info("Can't match %s: nothing says what it is", url)
                 return None
             _, search = _CATALOGUES[target]
             candidates = search(client, link.item_type, source)
@@ -490,6 +537,21 @@ def resolve_link(url: str, target: Provider) -> Optional[str]:
         )
         return None
     return match.url
+
+
+def _describes(metadata: Optional[MusicMetadata]) -> bool:
+    return bool(metadata and metadata.title and metadata.artist_name)
+
+
+def find_link(
+    provider: Provider, kind: ItemType, title: str, artist: str
+) -> Optional[str]:
+    """``title`` by ``artist`` on ``provider``, found by searching its catalogue."""
+    reference = MusicMetadata(title=title, artist_name=artist)
+    _, search = _CATALOGUES[provider]
+    with _client() as client:
+        match = best_match(reference, kind, search(client, kind, reference))
+    return match.url if match else None
 
 
 def best_match(
@@ -670,6 +732,11 @@ def _youtube_lookup(_client: httpx.Client, link: MusicLink) -> Optional[MusicMet
         raise LinkResolutionError(f"YouTube Music: {exc!r}") from exc
 
 
+def _is_album(playlist_id: Optional[str]) -> bool:
+    # YouTube Music albums are playlists whose id starts with OLAK5uy_.
+    return (playlist_id or "").startswith("OLAK5uy_")
+
+
 def _youtube_search(
     _client: httpx.Client, kind: ItemType, source: MusicMetadata
 ) -> list[tuple[MusicLink, MusicMetadata]]:
@@ -687,7 +754,7 @@ def _youtube_search(
             url = f"https://music.youtube.com/watch?v={item['videoId']}"
             seconds = item.get("duration_seconds")
             duration_ms = seconds * 1000 if seconds else None
-        elif kind is ItemType.ALBUM and item.get("playlistId"):
+        elif kind is ItemType.ALBUM and _is_album(item.get("playlistId")):
             url = f"https://music.youtube.com/playlist?list={item['playlistId']}"
             duration_ms = None
         else:

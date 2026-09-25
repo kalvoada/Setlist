@@ -536,9 +536,8 @@ def test_album_on_spotify_opens_on_youtube_music(client, alice, make_post, catal
         response.json()["url"]
         == "https://music.youtube.com/playlist?list=OLAK5uy_abbeyroad"
     )
-    assert response.json()["embed_url"] == (
-        "https://www.youtube.com/embed/videoseries?list=OLAK5uy_abbeyroad&playsinline=1"
-    )
+    # YouTube Music has no player to embed; the app draws its own card.
+    assert response.json()["embed_url"] is None
 
 
 # ── What posts say ────────────────────────────────────────────────────────────
@@ -619,20 +618,10 @@ def test_each_viewer_sees_their_own_service(client, alice, bob, make_post):
             SOUNDCLOUD_TRACK,
             "spotify",
             "https://w.soundcloud.com/player/?url=https%3A%2F%2Fsoundcloud.com%2Fartist"
-            "%2Fsome-song&color=%23ff5500&visual=false&show_comments=false",
+            "%2Fsome-song&visual=true&hide_related=true&show_comments=false"
+            "&show_reposts=false&show_teaser=false",
         ),
         (BANDCAMP_TRACK, "apple_music", None),  # no player id scraped in tests
-        (
-            SPOTIFY_PLAYLIST,
-            "apple_music",
-            "https://open.spotify.com/embed/playlist/37i9dQZF1DXcBWIGoYBM5M",
-        ),
-        (
-            YOUTUBE_PLAYLIST,
-            "spotify",
-            "https://www.youtube.com/embed/videoseries?list=PL4fGSI1pDJn6puJdseH2Rt9sMvt9E2M4i"
-            "&playsinline=1",
-        ),
     ],
 )
 def test_untranslatable_music_stays_on_its_own_player(
@@ -747,14 +736,99 @@ def test_no_match_reads_as_unavailable_and_says_why_in_the_log(
     assert "'Come Together - 2019 Mix'" in caplog.text
 
 
-def test_missing_original_metadata_reads_as_unavailable(
+def test_a_link_its_service_doesnt_know_is_found_by_the_posts_title(
     client, alice, make_post, catalogues
 ):
-    post = make_post(alice["headers"], url="https://open.spotify.com/track/0unknown")
+    # The seeded Come Together: an Apple Music id Apple doesn't know.
+    post = client.post(
+        "/posts/",
+        json={
+            "music_url": "https://music.apple.com/us/album/come-together/1474815798"
+            "?i=1474815817",
+            "title": "Come Together",
+            "artist_name": "The Beatles",
+        },
+        headers=alice["headers"],
+    ).json()
+    choose(client, alice, "spotify")
+
+    response = native_link(client, alice, post)
+
+    assert response.json()["url"] == SPOTIFY_TRACK.replace(
+        "4cOdK2wGLETKBW3PvgPWqT", "2EqlS6tkEnglzr7tkKAAYD"
+    )
+
+
+def test_nothing_known_about_a_link_reads_as_unavailable(
+    client, alice, catalogues
+):
+    # Neither Spotify nor the post (no artist) says what this is.
+    post = client.post(
+        "/posts/",
+        json={"music_url": "https://open.spotify.com/track/0unknown"},
+        headers=alice["headers"],
+    ).json()
     choose(client, alice, "apple_music")
 
     assert native_link(client, alice, post).json()["status"] == "unavailable"
     assert catalogues.calls("itunes.apple.com/search") == []
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        SPOTIFY_PLAYLIST,
+        "https://music.apple.com/us/playlist/todays-hits/pl.f4d106fed2bd",
+        YOUTUBE_PLAYLIST,
+        "https://soundcloud.com/artist/sets/demo",
+        "https://open.spotify.com/artist/0oSGxfWSnnOXhD2fKuz2Gy",
+    ],
+)
+def test_playlists_and_artist_pages_cant_be_shared(client, alice, url):
+    for path in ("/posts/", "/posts/resolve-link"):
+        field = "music_url" if path == "/posts/" else "url"
+        response = client.post(path, json={field: url}, headers=alice["headers"])
+        assert response.status_code == 422
+        assert "Share a song or an album" in response.json()["detail"]
+
+
+def test_a_youtube_album_search_skips_playlists(monkeypatch):
+    class YouTube:
+        def search(self, query, filter=None, limit=20):
+            return [
+                {"resultType": "album", "title": "Abbey Road",
+                 "playlistId": "PLnotanalbum", "artists": [{"name": "The Beatles"}]},
+                {"resultType": "album", "title": "Abbey Road",
+                 "playlistId": "OLAK5uy_abbeyroad", "artists": [{"name": "The Beatles"}]},
+            ]
+
+    monkeypatch.setattr(music, "_ytmusic", YouTube)
+    source = MusicMetadata(title="Abbey Road", artist_name="The Beatles")
+
+    candidates = music._youtube_search(None, ItemType.ALBUM, source)
+
+    assert [link.provider_item_id for link, _ in candidates] == ["OLAK5uy_abbeyroad"]
+
+
+@pytest.mark.parametrize(
+    "page",
+    [
+        '<meta property="og:video" content="https://bandcamp.com/EmbeddedPlayer/v=2/'
+        'track=2436476419/size=large/linkcol=0084B4/notracklist=true/twittercard=true/">',
+        '<meta name="bc-page-properties" content="{&quot;item_type&quot;:&quot;t&quot;,'
+        '&quot;item_id&quot;:2436476419,&quot;tralbum_page_version&quot;:0}">',
+    ],
+)
+def test_bandcamps_player_id_is_read_from_its_page(page):
+    assert music.bandcamp_player(f"<html><head>{page}</head></html>") == (
+        "https://bandcamp.com/EmbeddedPlayer/track=2436476419/size=large/"
+        "tracklist=false/artwork=small/"
+    )
+
+
+def test_a_bandcamp_page_without_a_player_id_has_no_player():
+    page = "<html><head><title>Bandcamp</title></head></html>"
+    assert music.bandcamp_player(page) is None
 
 
 def test_the_spotify_token_is_reused(client, alice, make_post, catalogues):

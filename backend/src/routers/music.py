@@ -34,7 +34,8 @@ def read_native_link(music_id: int, current_user: CurrentUser, db: DBSession):
 
     target = music_links.Provider(native.provider)
     try:
-        url = music_links.resolve_link(item.url, target)
+        known = music_links.MusicMetadata(title=item.title, artist_name=item.artist_name)
+        url = music_links.resolve_link(item.url, target, known)
     except music_links.LinkResolutionError as exc:
         logger.warning("Lookup of %s failed: %s", item.url, exc)
         raise HTTPException(

@@ -24,9 +24,16 @@ def _get_post_or_404(db, post_id: int) -> models.DBPost:
 
 def _parse_link(url: str) -> music_links.MusicLink:
     try:
-        return music_links.parse_music_url(url)
+        link = music_links.parse_music_url(url)
     except music_links.UnsupportedMusicLinkError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+    if link.item_type not in music_links.SHAREABLE_TYPES:
+        raise HTTPException(
+            status_code=422,
+            detail="Share a song or an album. Playlists and artist pages only exist "
+            "on one service, so they can't be shared yet.",
+        )
+    return link
 
 
 # ── Composing ─────────────────────────────────────────────────────────────────

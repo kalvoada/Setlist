@@ -202,6 +202,39 @@ final class NativeProviderTests: XCTestCase {
         XCTAssertNil(original.player)
     }
 
+    // MARK: Which look
+
+    func testAServiceWithAPlayerShowsIt() {
+        guard case let .open(destination)? = music(native: matchedOnAppleMusic)
+            .listenAction(nativeProvider: "apple_music")
+        else { return XCTFail("expected to open") }
+        XCTAssertEqual(destination.look, .player(Self.applePlayer))
+    }
+
+    func testYouTubeMusicGetsItsOwnCard() {
+        let native = NativeLink(
+            status: .resolved, provider: "youtube_music", providerName: "YouTube Music",
+            url: "https://music.youtube.com/watch?v=Hj6rYAOtV8E", embedUrl: nil
+        )
+        guard case let .open(destination)? = music(native: native)
+            .listenAction(nativeProvider: "youtube_music")
+        else { return XCTFail("expected to open") }
+        XCTAssertEqual(destination.look, .youTubeMusic)
+        XCTAssertEqual(destination.url.absoluteString, "https://music.youtube.com/watch?v=Hj6rYAOtV8E")
+    }
+
+    func testAServiceWithoutAPlayerFallsBackToTheCard() {
+        // A Bandcamp post whose page gave no player id.
+        let bandcamp = music(
+            provider: "bandcamp", providerName: "Bandcamp",
+            url: "https://artist.bandcamp.com/track/some-song", embedUrl: nil
+        )
+        guard case let .open(destination)? = bandcamp.listenAction(nativeProvider: nil) else {
+            return XCTFail("expected to open")
+        }
+        XCTAssertEqual(destination.look, .card)
+    }
+
     func testNoMatchSaysSoInsteadOfPlayingSomethingElse() {
         XCTAssertEqual(
             music(native: appleMusic(.unavailable)).listenAction(nativeProvider: "apple_music"),

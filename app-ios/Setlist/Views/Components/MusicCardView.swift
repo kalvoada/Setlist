@@ -1,12 +1,12 @@
 import SwiftUI
 import WebKit
 
-// A shared song, album or playlist. It plays in the listener's own service's
-// web player when the backend matched it there, and in the original service's
-// player when it can't be matched (SoundCloud, Bandcamp, playlists) or no
-// service is picked. The plain card is the fallback: while looking it up, when
-// the lookup failed, when a service has no player, and when the listener's
-// service doesn't have it ("Not available on Spotify").
+// A shared song or album. It plays in the listener's own service when the
+// backend matched it there, and where it was shared for SoundCloud, Bandcamp or
+// when no service is picked: in the service's web player, or YouTube Music's
+// card. The plain card is the fallback: while looking it up, when the lookup
+// failed, and when the listener's service doesn't have it ("Not available on
+// Spotify").
 struct MusicCardView: View {
     let music: MusicItem
     var artworkSize: CGFloat = 64
@@ -29,11 +29,17 @@ struct MusicCardView: View {
 
     var body: some View {
         Group {
-            if let player {
-                EmbeddedPlayer(url: player.url)
-                    .modifier(PlayerFrame(size: player.size))
+            switch look {
+            case let .player(url):
+                EmbeddedPlayer(url: url)
+                    .frame(height: playerHeight(provider: destinationProvider,
+                                                itemType: music.itemType))
                     .clipShape(RoundedRectangle(cornerRadius: 12))
-            } else {
+            case .youTubeMusic:
+                if case let .open(destination) = action {
+                    YouTubeMusicCard(music: music, destination: destination)
+                }
+            case .card:
                 card
             }
         }
@@ -129,11 +135,14 @@ struct MusicCardView: View {
         return item.listenAction(nativeProvider: nativeProvider)
     }
 
-    private var player: (url: URL, size: PlayerSize)? {
-        guard case let .open(destination) = action, let url = destination.player else {
-            return nil
-        }
-        return (url, PlayerSize(provider: destination.provider, itemType: music.itemType))
+    private var look: MusicItem.Destination.Look {
+        guard case let .open(destination) = action else { return .card }
+        return destination.look
+    }
+
+    private var destinationProvider: String {
+        guard case let .open(destination) = action else { return music.provider }
+        return destination.provider
     }
 
     // Names the service play will open, which is the listener's own once matched.
@@ -168,7 +177,7 @@ struct MusicCardView: View {
     }
 
     // `thenOpen`: the listener tapped play, so failures are explained and a
-    // match without a player is opened. A match with a player just shows it.
+    // match shown as the plain card is opened. A player or card just shows.
     private func lookUp(thenOpen: Bool) async {
         guard !isLookingUp else { return }
         isLookingUp = true
@@ -192,7 +201,7 @@ struct MusicCardView: View {
             fallback = FallbackPrompt(title: "Couldn't check \(nativeServiceName)")
             return
         }
-        if player == nil { await perform(next) }
+        if look == .card { await perform(next) }
     }
 
     private var artwork: some View {
@@ -251,39 +260,91 @@ struct MusicPreviewCard: View {
     }
 }
 
-// The height each service's player is designed for; YouTube's is a 16:9 video.
-private enum PlayerSize {
-    case height(CGFloat)
-    case widescreen
+// YouTube Music in its own colours. It has no player to embed, and YouTube's
+// video player refuses many songs outside YouTube, so tapping it opens the app.
+private struct YouTubeMusicCard: View {
+    let music: MusicItem
+    let destination: MusicItem.Destination
 
-    init(provider: String, itemType: String) {
-        let isTrack = itemType == "track"
-        switch provider {
-        case "spotify": self = .height(isTrack ? 152 : 352)
-        case "apple_music": self = .height(isTrack ? 175 : 450)
-        case "soundcloud": self = .height(isTrack ? 166 : 450)
-        case "bandcamp": self = .height(120)
-        default: self = .widescreen
+    @Environment(\.openURL) private var openURL
+
+    private static let red = Color(red: 1, green: 0, blue: 0)
+    private static let background = Color(red: 0.06, green: 0.06, blue: 0.06)
+
+    var body: some View {
+        Button {
+            openURL(destination.url)
+        } label: {
+            HStack(spacing: 12) {
+                AsyncImage(url: cover) { phase in
+                    if case let .success(image) = phase {
+                        image.resizable().scaledToFill()
+                    } else {
+                        Color.white.opacity(0.1)
+                    }
+                }
+                .frame(width: 64, height: 64)
+                .clipShape(RoundedRectangle(cornerRadius: 6))
+
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(music.title)
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.white)
+                        .lineLimit(2)
+                    if let artist = music.artistName, !artist.isEmpty {
+                        Text(artist)
+                            .font(.footnote)
+                            .foregroundStyle(.white.opacity(0.7))
+                            .lineLimit(1)
+                    }
+                    Label {
+                        Text("YouTube Music")
+                    } icon: {
+                        Image(systemName: "play.circle.fill").foregroundStyle(Self.red)
+                    }
+                    .font(.caption2.weight(.medium))
+                    .foregroundStyle(.white.opacity(0.7))
+                }
+
+                Spacer(minLength: 4)
+
+                Image(systemName: "play.fill")
+                    .font(.body)
+                    .foregroundStyle(.white)
+                    .frame(width: 40, height: 40)
+                    .background(Self.red, in: Circle())
+            }
+            .padding(Metrics.cardPadding)
+            .background(Self.background, in: RoundedRectangle(cornerRadius: 12))
         }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Play \(music.title) on YouTube Music")
+    }
+
+    // YouTube serves every video's cover at a fixed address; the 16:9 one,
+    // cropped square, is the album art of a song.
+    private var cover: URL? {
+        let components = URLComponents(url: destination.url, resolvingAgainstBaseURL: false)
+        guard let id = components?.queryItems?.first(where: { $0.name == "v" })?.value else {
+            return music.artworkURL
+        }
+        return URL(string: "https://i.ytimg.com/vi/\(id)/mqdefault.jpg")
     }
 }
 
-private struct PlayerFrame: ViewModifier {
-    let size: PlayerSize
-
-    @ViewBuilder
-    func body(content: Content) -> some View {
-        switch size {
-        case let .height(height):
-            content.frame(height: height)
-        case .widescreen:
-            content.aspectRatio(16 / 9, contentMode: .fit)
-        }
+// The height each service's player is designed for.
+private func playerHeight(provider: String, itemType: String) -> CGFloat {
+    let isTrack = itemType == "track"
+    switch provider {
+    case "spotify": return isTrack ? 152 : 352
+    case "apple_music": return isTrack ? 175 : 450
+    case "soundcloud": return isTrack ? 300 : 450
+    default: return 120  // Bandcamp
     }
 }
 
 // A service's own web player, embedded the way a web page would (an iframe on
-// an https page, which YouTube requires). Links out of it, like the title or
+// an https page). Links out of it, like the title or
 // "Open in Spotify", open the app or the browser instead of navigating the post.
 struct EmbeddedPlayer: UIViewRepresentable {
     let url: URL

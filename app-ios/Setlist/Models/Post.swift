@@ -104,6 +104,20 @@ extension MusicItem {
         let service: String
         let provider: String
         let player: URL?
+
+        enum Look: Equatable {
+            // The service's own web player.
+            case player(URL)
+            // YouTube Music has no player to embed; the app draws its card.
+            case youTubeMusic
+            // The plain card: no player for it.
+            case card
+        }
+
+        var look: Look {
+            if let player { return .player(player) }
+            return provider == "youtube_music" ? .youTubeMusic : .card
+        }
     }
 
     // What the card shows for someone listening on `nativeProvider`.

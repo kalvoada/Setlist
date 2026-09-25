@@ -50,7 +50,7 @@ struct ComposePostView: View {
                 } header: {
                     Text("What are you listening to?")
                 } footer: {
-                    Text("Spotify, Apple Music, YouTube Music, SoundCloud and Bandcamp links all work.")
+                    Text("Songs and albums from Spotify, Apple Music, YouTube Music, SoundCloud and Bandcamp.")
                 }
 
                 if let preview = model.preview {

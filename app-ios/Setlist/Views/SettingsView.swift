@@ -53,7 +53,7 @@ struct SettingsView: View {
             } header: {
                 Text("Music")
             } footer: {
-                Text("Songs and albums from Spotify, Apple Music and YouTube Music play in the one you pick, in its own player, when it has them. SoundCloud, Bandcamp and playlists play where they were shared.")
+                Text("Songs and albums from Spotify, Apple Music and YouTube Music play in the one you pick when it has them. SoundCloud and Bandcamp play in their own players.")
             }
 
             Section("Activity") {

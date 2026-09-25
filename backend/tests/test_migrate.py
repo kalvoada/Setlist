@@ -7,7 +7,7 @@ from sqlalchemy import create_engine, inspect, text
 from src.config import settings
 from src.database.migrate import alembic_config, upgrade_database
 
-HEAD = "0003_embeds_and_link_cache"
+HEAD = "0004_reset_link_cache"
 
 
 @pytest.fixture

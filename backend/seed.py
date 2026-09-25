@@ -13,14 +13,15 @@ import random
 
 from sqlalchemy import text
 
+from src import music
 from src.config import settings
+from src.database.crud import posts as posts_crud
 from src.database.database import Base, SessionLocal, engine
 from src.database.migrate import upgrade_database
 from src.database.models import (
     DBComment,
     DBFollow,
     DBLike,
-    DBMusicItem,
     DBPost,
     DBUser,
 )
@@ -37,63 +38,25 @@ USERS = [
     ("nora", "nora@setlist.app", "Nora Sedláková", "90s hip hop enjoyer."),
 ]
 
+# Spotify, Apple Music and YouTube Music links are found by searching the real
+# catalogues when seeding, so they point at songs that exist. That needs network
+# access (and SPOTIFY_CLIENT_ID/SECRET for Spotify); anything not found is skipped.
 MUSIC = [
-    {
-        "provider": "spotify",
-        "item_type": "track",
-        "provider_item_id": "4cOdK2wGLETKBW3PvgPWqT",
-        "url": "https://open.spotify.com/track/4cOdK2wGLETKBW3PvgPWqT",
-        "title": "Never Gonna Give You Up",
-        "artist_name": "Rick Astley",
-    },
-    {
-        "provider": "spotify",
-        "item_type": "album",
-        "provider_item_id": "1DFixLWuPkv3KT3TnV35m3",
-        "url": "https://open.spotify.com/album/1DFixLWuPkv3KT3TnV35m3",
-        "title": "Melodrama",
-        "artist_name": "Lorde",
-    },
-    {
-        "provider": "spotify",
-        "item_type": "playlist",
-        "provider_item_id": "37i9dQZF1DXcBWIGoYBM5M",
-        "url": "https://open.spotify.com/playlist/37i9dQZF1DXcBWIGoYBM5M",
-        "title": "Today's Top Hits",
-        "artist_name": "Spotify",
-    },
-    {
-        "provider": "apple_music",
-        "item_type": "track",
-        "provider_item_id": "1474815817",
-        "url": "https://music.apple.com/us/album/come-together/1474815798?i=1474815817",
-        "title": "Come Together",
-        "artist_name": "The Beatles",
-    },
-    {
-        "provider": "apple_music",
-        "item_type": "album",
-        "provider_item_id": "1440857781",
-        "url": "https://music.apple.com/us/album/kind-of-blue/1440857781",
-        "title": "Kind of Blue",
-        "artist_name": "Miles Davis",
-    },
-    {
-        "provider": "youtube_music",
-        "item_type": "track",
-        "provider_item_id": "hTWKbfoikeg",
-        "url": "https://music.youtube.com/watch?v=hTWKbfoikeg",
-        "title": "Smells Like Teen Spirit",
-        "artist_name": "Nirvana",
-    },
-    {
-        "provider": "soundcloud",
-        "item_type": "track",
-        "provider_item_id": "flume/say-it",
-        "url": "https://soundcloud.com/flume/say-it",
-        "title": "Say It",
-        "artist_name": "Flume",
-    },
+    ("spotify", "track", "Never Gonna Give You Up", "Rick Astley"),
+    ("apple_music", "track", "Come Together", "The Beatles"),
+    ("youtube_music", "track", "Smells Like Teen Spirit", "Nirvana"),
+    ("spotify", "track", "Blinding Lights", "The Weeknd"),
+    ("apple_music", "track", "Bohemian Rhapsody", "Queen"),
+    ("youtube_music", "track", "Billie Jean", "Michael Jackson"),
+    ("spotify", "album", "Abbey Road", "The Beatles"),
+    ("apple_music", "album", "Kind of Blue", "Miles Davis"),
+]
+
+# SoundCloud and Bandcamp can't be searched here, so these links are fixed.
+FIXED_MUSIC = [
+    ("https://soundcloud.com/forss/flickermood", "Flickermood", "Forss"),
+    ("https://c418.bandcamp.com/album/minecraft-volume-alpha", "Minecraft - Volume Alpha",
+     "C418"),
 ]
 
 CAPTIONS = [
@@ -116,6 +79,32 @@ COMMENTS = [
     "Respectfully, no.",
     "Instant like.",
 ]
+
+
+def find_music() -> list[tuple[music.MusicLink, music.MusicMetadata]]:
+    found = []
+    for provider, kind, title, artist in MUSIC:
+        try:
+            url = music.find_link(
+                music.Provider(provider), music.ItemType(kind), title, artist
+            ) if settings.enable_link_metadata else None
+        except Exception as exc:  # noqa: BLE001 - offline, no credentials, ...
+            print(f"  skipped {title} ({provider}): {exc}")
+            continue
+        if url is None:
+            print(f"  skipped {title} ({provider}): not found")
+            continue
+        found.append((url, title, artist))
+
+    music_found = []
+    for url, title, artist in found + FIXED_MUSIC:
+        link = music.parse_music_url(url)
+        # Artwork, and Bandcamp's player id; never fails, worst case empty.
+        metadata = music.fetch_metadata(link)
+        metadata.title, metadata.artist_name = title, artist
+        print(f"  {link.provider.value:14} {title}: {url}")
+        music_found.append((link, metadata))
+    return music_found
 
 
 def main() -> None:
@@ -143,9 +132,11 @@ def main() -> None:
         db.add_all(users)
         db.commit()
 
-        print("Creating music items ...")
-        music_items = [DBMusicItem(**item) for item in MUSIC]
-        db.add_all(music_items)
+        print("Finding the music ...")
+        music_items = [
+            posts_crud.get_or_create_music_item(db, link, metadata)
+            for link, metadata in find_music()
+        ]
         db.commit()
 
         print("Creating posts ...")
