@@ -8,7 +8,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from src.config import settings
-from src.database.database import Base, engine
+from src.database.migrate import upgrade_database
 from src.routers import auth, comments, music, posts, users
 
 # The app's own INFO lines (e.g. why a song had no match) next to uvicorn's.
@@ -65,7 +65,7 @@ def create_app() -> FastAPI:
 
     if not settings.is_production:
         # Convenience for local development; production runs `alembic upgrade head`.
-        Base.metadata.create_all(bind=engine)
+        upgrade_database()
 
     return app
 

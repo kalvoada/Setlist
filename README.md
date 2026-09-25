@@ -35,7 +35,7 @@ Everything is read from the environment (see `.env.example`):
 | `CORS_ORIGINS` | `*` | Comma-separated list |
 | `ENABLE_LINK_METADATA` | `true` | Looks up title/artwork through the providers' public oEmbed endpoints, and the same song on the listener's service through Spotify's Web API and Apple's iTunes Search API |
 | `SPOTIFY_CLIENT_ID`, `SPOTIFY_CLIENT_SECRET` | unset | From a free app at [developer.spotify.com](https://developer.spotify.com/dashboard). Needed for matching into or out of Spotify; no user sign-in is involved |
-| `ENVIRONMENT` | `development` | `production` enables the checks above and disables auto-created tables |
+| `ENVIRONMENT` | `development` | Outside `production` the server applies database migrations on startup; `production` enables the checks above and leaves migrations to `alembic upgrade head` |
 
 
 ### API

@@ -11,8 +11,11 @@ from __future__ import annotations
 
 import random
 
+from sqlalchemy import text
+
 from src.config import settings
 from src.database.database import Base, SessionLocal, engine
+from src.database.migrate import upgrade_database
 from src.database.models import (
     DBComment,
     DBFollow,
@@ -118,7 +121,9 @@ COMMENTS = [
 def main() -> None:
     print(f"Resetting {settings.database_url} ...")
     Base.metadata.drop_all(bind=engine)
-    Base.metadata.create_all(bind=engine)
+    with engine.begin() as connection:
+        connection.execute(text("DROP TABLE IF EXISTS alembic_version"))
+    upgrade_database()
 
     random.seed(7)
     db = SessionLocal()
