@@ -6,10 +6,10 @@ which is what makes the service deployable without code changes.
 """
 
 from functools import lru_cache
-from typing import List, Optional
+from typing import Annotated, List, Optional
 
 from pydantic import Field, field_validator
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 
 class Settings(BaseSettings):
@@ -34,7 +34,9 @@ class Settings(BaseSettings):
     access_token_expire_minutes: int = 60 * 24 * 7  # 7 days
 
     # ── CORS ──────────────────────────────────────────────────────────────
-    cors_origins: List[str] = Field(default_factory=lambda: ["*"])
+    # NoDecode: hand the raw "a,b" string to the splitter below instead of
+    # parsing it as JSON, which fails for "*" and for comma-separated lists.
+    cors_origins: Annotated[List[str], NoDecode] = Field(default_factory=lambda: ["*"])
 
     # ── Music link resolution ─────────────────────────────────────────────
     # When enabled the API enriches posted streaming links with title/artwork
