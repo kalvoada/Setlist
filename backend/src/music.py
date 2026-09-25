@@ -475,14 +475,23 @@ _FEATURING = re.compile(
     r"[(\[]\s*(?:feat|ft|featuring|with)\b[^)\]]*[)\]]|\s-\s(?:feat|ft)\b.*$",
     re.IGNORECASE,
 )
+# A remaster is the same recording. Spotify tags it in the title ("Come Together
+# - Remastered 2009"); Apple Music usually doesn't.
+_REMASTER = re.compile(
+    r"\s(?:-\s|[(\[])(?:\d{4}\s)?(?:digital\s)?remaster(?:ed)?(?:\s\d{4})?"
+    r"(?:\sversion)?[)\]]?$",
+    re.IGNORECASE,
+)
 _ARTIST_SEPARATORS = re.compile(
     r"[,&;/+]|\s(?:feat\.?|ft\.?|featuring|with|and|x)\s", re.IGNORECASE
 )
 
 
 def _normalize(text: str) -> str:
-    """Case, accents, punctuation and "feat." credits don't make a different song."""
-    text = unicodedata.normalize("NFKD", _FEATURING.sub("", text)).casefold()
+    """Case, accents, punctuation, "feat." credits and remaster tags don't make a
+    different song."""
+    text = _REMASTER.sub("", _FEATURING.sub("", text).strip())
+    text = unicodedata.normalize("NFKD", text).casefold()
     return "".join(char for char in text if char.isalnum())
 
 

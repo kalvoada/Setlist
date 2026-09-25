@@ -449,6 +449,45 @@ def test_native_link_needs_a_signed_in_listener_with_a_service(client, alice, ma
     assert missing.status_code == 404
 
 
+def test_come_together_on_apple_music_opens_for_a_spotify_listener(
+    client, alice, make_post, song_link
+):
+    apple = "https://music.apple.com/us/album/come-together/1441164426?i=1441164430"
+    spotify = "https://open.spotify.com/track/2EqlS6tkEnglzr7tkKAAYD"
+    song_link.reply(
+        200,
+        {
+            "entityUniqueId": "ITUNES_SONG::1441164430",
+            "entitiesByUniqueId": {
+                "ITUNES_SONG::1441164430": {
+                    "type": "song",
+                    "title": "Come Together",
+                    "artistName": "The Beatles",
+                },
+                "SPOTIFY_SONG::2EqlS6tkEnglzr7tkKAAYD": {
+                    "type": "song",
+                    "title": "Come Together - Remastered 2009",
+                    "artistName": "The Beatles",
+                },
+            },
+            "linksByPlatform": {
+                "appleMusic": {"url": apple, "entityUniqueId": "ITUNES_SONG::1441164430"},
+                "spotify": {
+                    "url": spotify,
+                    "entityUniqueId": "SPOTIFY_SONG::2EqlS6tkEnglzr7tkKAAYD",
+                },
+            },
+        },
+    )
+    post = make_post(alice["headers"], url=apple)
+    choose(client, alice, "spotify")
+
+    response = native_link(client, alice, post)
+
+    assert response.json()["status"] == "resolved"
+    assert response.json()["url"] == spotify
+
+
 def test_album_on_apple_music_opens_on_spotify(client, alice, make_post, song_link):
     song_link.reply(
         200,
@@ -504,6 +543,15 @@ def _pair(source: dict, match: dict, url: str = APPLE_TRACK) -> dict:
         (
             {"title": "Come Together - Remastered 2009", "artistName": "The Beatles"},
             {"title": "Come Together (Remastered 2009)", "artistName": "The Beatles"},
+        ),
+        # Spotify tags remasters, Apple Music usually doesn't.
+        (
+            {"title": "Come Together - Remastered 2009", "artistName": "The Beatles"},
+            {"title": "Come Together", "artistName": "The Beatles"},
+        ),
+        (
+            {"title": "Heroes - 2017 Remaster", "artistName": "David Bowie"},
+            {"title": "\"Heroes\"", "artistName": "David Bowie"},
         ),
         (
             {"title": "Get Lucky (feat. Pharrell Williams & Nile Rodgers)",
