@@ -424,7 +424,7 @@ def resolve_links(url: str) -> dict[str, str]:
     Raises :class:`LinkResolutionError` when the answer is unknown for now.
     """
     if not settings.enable_link_metadata:
-        raise LinkResolutionError("Link lookups are disabled.")
+        raise LinkResolutionError("Link lookups are disabled (ENABLE_LINK_METADATA).")
 
     params = {"url": url}
     if settings.odesli_api_key:
@@ -434,18 +434,22 @@ def resolve_links(url: str) -> dict[str, str]:
         with _client(timeout=_RESOLVE_TIMEOUT_SECONDS) as client:
             response = client.get(_ODESLI_URL, params=params)
     except httpx.HTTPError as exc:
-        raise LinkResolutionError(str(exc)) from exc
+        raise LinkResolutionError(f"song.link unreachable: {exc!r}") from exc
 
     # 400/404: song.link does not know this item, which is an answer too.
     if response.status_code in {400, 404}:
         return {}
     if response.status_code != 200:
-        raise LinkResolutionError(f"song.link answered {response.status_code}")
+        raise LinkResolutionError(
+            f"song.link answered {response.status_code}: {response.text[:300]}"
+        )
 
     try:
         return verified_links(response.json())
     except (ValueError, AttributeError, TypeError) as exc:
-        raise LinkResolutionError("song.link sent an unexpected answer") from exc
+        raise LinkResolutionError(
+            f"song.link sent an unexpected answer: {exc!r}"
+        ) from exc
 
 
 def verified_links(payload: dict[str, Any]) -> dict[str, str]:

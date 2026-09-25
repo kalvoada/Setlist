@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import logging
+
 from fastapi import APIRouter, HTTPException
 
 from .. import music as music_links
@@ -9,6 +11,8 @@ from .. import presenters
 from ..database import schemas
 from ..database.crud import posts as posts_crud
 from ..dependencies import CurrentUser, DBSession
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/music", tags=["music"])
 
@@ -31,6 +35,7 @@ def read_native_link(music_id: int, current_user: CurrentUser, db: DBSession):
     try:
         links = music_links.resolve_links(item.url)
     except music_links.LinkResolutionError as exc:
+        logger.warning("Lookup of %s failed: %s", item.url, exc)
         raise HTTPException(
             status_code=503,
             detail=f"Couldn't look this up on {native.provider_name} right now. "

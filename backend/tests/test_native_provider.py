@@ -388,7 +388,7 @@ def test_music_song_link_does_not_know_reads_as_unavailable(
     ],
 )
 def test_lookup_failures_are_reported_and_retried(
-    client, alice, make_post, song_link, failure
+    client, alice, make_post, song_link, failure, caplog
 ):
     kind, *args = failure
     if kind == "reply":
@@ -404,6 +404,8 @@ def test_lookup_failures_are_reported_and_retried(
 
     assert response.status_code == 503
     assert response.json()["detail"].startswith("Couldn't look this up on Apple Music")
+    # The reason goes to the server log, not to the client.
+    assert f"Lookup of {SPOTIFY_TRACK} failed: song.link" in caplog.text
     # Not remembered as "unavailable": the next tap asks again and succeeds.
     assert feed_native(client, alice, post)["status"] == "pending"
     song_link.reply(200, SPOTIFY_ANSWER)
