@@ -2,11 +2,12 @@ import XCTest
 @testable import Setlist
 
 // End to end against the real services: the local backend (the app's
-// SetlistAPIBaseURL), song.link and Apple's iTunes Search. Skipped when no
-// backend is running, so the rest of the suite stays offline.
+// SetlistAPIBaseURL), Apple's iTunes Search and Spotify's Web API (the backend
+// needs SPOTIFY_CLIENT_ID and SPOTIFY_CLIENT_SECRET). Skipped when no backend
+// is running, so the rest of the suite stays offline.
 //
 // The backend caches each lookup on the music item, so only the first run
-// against a database actually calls song.link.
+// against a database actually asks Spotify.
 final class NativeProviderLiveTests: XCTestCase {
 
     private static let password = "supersecret1"

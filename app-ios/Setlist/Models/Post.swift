@@ -122,15 +122,11 @@ extension MusicItem {
     }
 }
 
-// Services a listener can pick; raw values are the API's provider ids.
+// Services a listener can pick: the ones the backend can match music into.
+// Raw values are the API's provider ids.
 enum MusicService: String, CaseIterable, Identifiable {
     case spotify
     case appleMusic = "apple_music"
-    case youtubeMusic = "youtube_music"
-    case tidal
-    case deezer
-    case soundcloud
-    case bandcamp
 
     var id: String { rawValue }
 
@@ -138,11 +134,6 @@ enum MusicService: String, CaseIterable, Identifiable {
         switch self {
         case .spotify: return "Spotify"
         case .appleMusic: return "Apple Music"
-        case .youtubeMusic: return "YouTube Music"
-        case .tidal: return "TIDAL"
-        case .deezer: return "Deezer"
-        case .soundcloud: return "SoundCloud"
-        case .bandcamp: return "Bandcamp"
         }
     }
 }

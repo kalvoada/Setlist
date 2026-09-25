@@ -39,11 +39,14 @@ class Settings(BaseSettings):
     # ── Music link resolution ─────────────────────────────────────────────
     # When enabled the API enriches posted streaming links with title/artwork
     # via the providers' public oEmbed endpoints, and finds the same song on
-    # the listener's own service through song.link. Disabled in tests.
+    # the listener's own service in Spotify's and Apple's catalogues.
+    # Disabled in tests.
     enable_link_metadata: bool = True
     link_metadata_timeout_seconds: float = 4.0
-    # Optional: without a key song.link allows about 10 lookups a minute.
-    odesli_api_key: Optional[str] = None
+    # A Spotify app's credentials (developer.spotify.com): needed for any
+    # matching into or out of Spotify. No user sign-in is involved.
+    spotify_client_id: Optional[str] = None
+    spotify_client_secret: Optional[str] = None
 
     @field_validator("cors_origins", mode="before")
     @classmethod

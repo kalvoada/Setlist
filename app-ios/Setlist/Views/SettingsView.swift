@@ -53,7 +53,7 @@ struct SettingsView: View {
             } header: {
                 Text("Music")
             } footer: {
-                Text("Songs and albums shared from other services open in yours when there's a match. Bandcamp, SoundCloud and playlists open where they were shared.")
+                Text("Songs and albums shared from Spotify or Apple Music open in the one you pick when it has them. Everything else, including playlists, opens where it was shared.")
             }
 
             Section("Activity") {

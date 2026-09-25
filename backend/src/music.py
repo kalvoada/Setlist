@@ -5,6 +5,7 @@ Parsing and enrichment of streaming-service links.
 from __future__ import annotations
 
 import re
+import time
 import unicodedata
 from dataclasses import dataclass
 from enum import Enum
@@ -60,6 +61,8 @@ class MusicMetadata:
     artist_name: Optional[str] = None
     artwork_url: Optional[str] = None
     preview_url: Optional[str] = None
+    # Tracks only; tells a remaster from a live take or an edit when matching.
+    duration_ms: Optional[int] = None
 
 
 class UnsupportedMusicLinkError(ValueError):
@@ -299,9 +302,9 @@ def fetch_metadata(link: MusicLink) -> MusicMetadata:
     return MusicMetadata()
 
 
-def _client(timeout: Optional[float] = None) -> httpx.Client:
+def _client() -> httpx.Client:
     return httpx.Client(
-        timeout=timeout or settings.link_metadata_timeout_seconds,
+        timeout=settings.link_metadata_timeout_seconds,
         follow_redirects=True,
         headers={"User-Agent": "SetlistBot/1.0 (+https://github.com/kalvoada/Setlist)"},
     )
@@ -380,26 +383,23 @@ def fallback_title(link: MusicLink) -> str:
 
 # ── Cross-provider links ──────────────────────────────────────────────────────
 #
-# song.link (Odesli) maps a streaming link onto the other services in one
-# unauthenticated call. Its answers are only kept when the other service's own
-# metadata agrees with the original's, so a wrong match reads as "not
-# available" instead of opening the wrong song.
+# The item's own service describes it (title, artist, length), then the other
+# service's catalogue is searched for it. A candidate is only accepted when its
+# own metadata agrees, so a doubtful match reads as "not available" instead of
+# opening the wrong song. Apple's free iTunes API has no ISRC lookup, so title,
+# artist and length are what both directions can compare.
 
-_ODESLI_URL = "https://api.song.link/v1-alpha.1/links"
-_RESOLVE_TIMEOUT_SECONDS = 10.0
+_ITUNES_API = "https://itunes.apple.com"
+_SPOTIFY_API = "https://api.spotify.com/v1"
+_SPOTIFY_TOKEN_URL = "https://accounts.spotify.com/api/token"
 
-# Bandcamp is not covered, and SoundCloud is mostly user uploads, so a "match"
-# there is as likely a re-upload as the real thing: both stay on their own links.
-_ODESLI_PLATFORMS = {
-    Provider.SPOTIFY: "spotify",
-    Provider.APPLE_MUSIC: "appleMusic",
-    Provider.YOUTUBE_MUSIC: "youtubeMusic",
-    Provider.TIDAL: "tidal",
-    Provider.DEEZER: "deezer",
-}
+# Remasters and re-releases differ by a second or two; edits and live takes by more.
+_DURATION_TOLERANCE_MS = 3000
 
 # Playlists and artist pages are specific to one service.
 _TRANSLATABLE_TYPES = {ItemType.TRACK, ItemType.ALBUM}
+
+_spotify_token: Optional[tuple[str, float]] = None  # (token, expires at)
 
 
 class LinkResolutionError(RuntimeError):
@@ -413,12 +413,12 @@ def can_translate(source: str, target: str, item_type: str) -> bool:
         kind = ItemType(item_type)
     except ValueError:
         return False
-    return kind in _TRANSLATABLE_TYPES and providers <= _ODESLI_PLATFORMS.keys()
+    return kind in _TRANSLATABLE_TYPES and providers <= _CATALOGUES.keys()
 
 
 def resolve_links(url: str) -> dict[str, str]:
     """
-    Verified links to the same song or album on other services, keyed by
+    Verified links to the same song or album on the other services, keyed by
     provider value. An empty dict means none were found.
 
     Raises :class:`LinkResolutionError` when the answer is unknown for now.
@@ -426,54 +426,177 @@ def resolve_links(url: str) -> dict[str, str]:
     if not settings.enable_link_metadata:
         raise LinkResolutionError("Link lookups are disabled (ENABLE_LINK_METADATA).")
 
-    params = {"url": url}
-    if settings.odesli_api_key:
-        params["key"] = settings.odesli_api_key
-
     try:
-        with _client(timeout=_RESOLVE_TIMEOUT_SECONDS) as client:
-            response = client.get(_ODESLI_URL, params=params)
-    except httpx.HTTPError as exc:
-        raise LinkResolutionError(f"song.link unreachable: {exc!r}") from exc
-
-    # 400/404: song.link does not know this item, which is an answer too.
-    if response.status_code in {400, 404}:
+        link = parse_music_url(url)
+    except UnsupportedMusicLinkError:
         return {}
-    if response.status_code != 200:
-        raise LinkResolutionError(
-            f"song.link answered {response.status_code}: {response.text[:300]}"
-        )
+    if link.provider not in _CATALOGUES or link.item_type not in _TRANSLATABLE_TYPES:
+        return {}
 
     try:
-        return verified_links(response.json())
-    except (ValueError, AttributeError, TypeError) as exc:
+        with _client() as client:
+            lookup, _ = _CATALOGUES[link.provider]
+            source = lookup(client, link)
+            if source is None or not source.title or not source.artist_name:
+                return {}
+
+            links: dict[str, str] = {}
+            for provider, (_, search) in _CATALOGUES.items():
+                if provider is link.provider:
+                    continue
+                candidates = search(client, link.item_type, source)
+                match = best_match(source, link.item_type, candidates)
+                if match is not None:
+                    links[provider.value] = match.url
+            return links
+    except httpx.HTTPStatusError as exc:
         raise LinkResolutionError(
-            f"song.link sent an unexpected answer: {exc!r}"
+            f"{exc.request.url.host} answered {exc.response.status_code}: "
+            f"{exc.response.text[:300]}"
         ) from exc
+    except httpx.HTTPError as exc:
+        raise LinkResolutionError(f"Music service unreachable: {exc!r}") from exc
+    except (ValueError, KeyError, TypeError, AttributeError) as exc:
+        raise LinkResolutionError(f"Unexpected answer: {exc!r}") from exc
 
 
-def verified_links(payload: dict[str, Any]) -> dict[str, str]:
-    """Pick the matches out of a song.link response that agree with the original."""
-    entities = payload.get("entitiesByUniqueId") or {}
-    source_id = payload.get("entityUniqueId")
-    source = entities.get(source_id)
-    if not source:
-        return {}
+def best_match(
+    source: MusicMetadata,
+    kind: ItemType,
+    candidates: list[tuple[MusicLink, MusicMetadata]],
+) -> Optional[MusicLink]:
+    """The candidate that is the same music as ``source``, if any."""
+    matches = [
+        (link, metadata)
+        for link, metadata in candidates
+        if link.item_type is kind and _same_music(source, metadata)
+    ]
+    # The same recording is often on an album and a compilation; both are fine,
+    # the closest length wins.
+    length = source.duration_ms or 0
+    matches.sort(key=lambda match: abs((match[1].duration_ms or 0) - length))
+    return matches[0][0] if matches else None
 
-    links: dict[str, str] = {}
-    for provider, platform in _ODESLI_PLATFORMS.items():
-        entry = (payload.get("linksByPlatform") or {}).get(platform) or {}
-        entity = entities.get(entry.get("entityUniqueId"))
-        if not entity or entry.get("entityUniqueId") == source_id:
-            continue
-        try:
-            link = parse_music_url(entry.get("url") or "")
-        except UnsupportedMusicLinkError:
-            continue
-        if link.provider is provider and _same_music(source, entity):
-            links[provider.value] = link.url
-    return links
 
+def _get_json(client: httpx.Client, url: str, **kwargs) -> Any:
+    """GET ``url``; None when the service doesn't know it (400/404)."""
+    response = client.get(url, **kwargs)
+    if response.status_code in {400, 404}:
+        return None
+    response.raise_for_status()
+    return response.json()
+
+
+# Apple Music, through the public iTunes Search API.
+
+
+def _itunes_entry(item: dict[str, Any]) -> tuple[MusicLink, MusicMetadata]:
+    is_track = item.get("wrapperType") == "track"
+    link = parse_music_url(item["trackViewUrl" if is_track else "collectionViewUrl"])
+    return link, MusicMetadata(
+        title=item.get("trackName" if is_track else "collectionName"),
+        artist_name=item.get("artistName"),
+        duration_ms=item.get("trackTimeMillis") if is_track else None,
+    )
+
+
+def _itunes_lookup(client: httpx.Client, link: MusicLink) -> Optional[MusicMetadata]:
+    storefront = re.match(r"^/([a-z]{2})/", urlparse(link.url).path)
+    payload = _get_json(
+        client,
+        f"{_ITUNES_API}/lookup",
+        params={
+            "id": link.provider_item_id,
+            "country": storefront.group(1) if storefront else "us",
+        },
+    )
+    results = (payload or {}).get("results") or []
+    return _itunes_entry(results[0])[1] if results else None
+
+
+def _itunes_search(
+    client: httpx.Client, kind: ItemType, source: MusicMetadata
+) -> list[tuple[MusicLink, MusicMetadata]]:
+    payload = _get_json(
+        client,
+        f"{_ITUNES_API}/search",
+        params={
+            "term": f"{_primary_artist(source)} {_plain_title(source.title)}",
+            "entity": "song" if kind is ItemType.TRACK else "album",
+            "country": "us",
+            "limit": 25,
+        },
+    )
+    return [_itunes_entry(item) for item in (payload or {}).get("results") or []]
+
+
+# Spotify, through the Web API with the app's own (client credentials) token.
+
+
+def _spotify_headers(client: httpx.Client) -> dict[str, str]:
+    global _spotify_token
+    if not (settings.spotify_client_id and settings.spotify_client_secret):
+        raise LinkResolutionError(
+            "Set SPOTIFY_CLIENT_ID and SPOTIFY_CLIENT_SECRET to match music on Spotify."
+        )
+    if _spotify_token is None or _spotify_token[1] <= time.monotonic():
+        response = client.post(
+            _SPOTIFY_TOKEN_URL,
+            data={"grant_type": "client_credentials"},
+            auth=(settings.spotify_client_id, settings.spotify_client_secret),
+        )
+        response.raise_for_status()
+        payload = response.json()
+        # Renewed a minute early so it never expires mid-lookup.
+        _spotify_token = (
+            payload["access_token"],
+            time.monotonic() + payload["expires_in"] - 60,
+        )
+    return {"Authorization": f"Bearer {_spotify_token[0]}"}
+
+
+def _spotify_entry(item: dict[str, Any]) -> tuple[MusicLink, MusicMetadata]:
+    return parse_music_url(item["external_urls"]["spotify"]), MusicMetadata(
+        title=item.get("name"),
+        artist_name=", ".join(artist["name"] for artist in item.get("artists") or []),
+        duration_ms=item.get("duration_ms"),
+    )
+
+
+def _spotify_lookup(client: httpx.Client, link: MusicLink) -> Optional[MusicMetadata]:
+    kind = "tracks" if link.item_type is ItemType.TRACK else "albums"
+    item = _get_json(
+        client,
+        f"{_SPOTIFY_API}/{kind}/{link.provider_item_id}",
+        headers=_spotify_headers(client),
+    )
+    return _spotify_entry(item)[1] if item else None
+
+
+def _spotify_search(
+    client: httpx.Client, kind: ItemType, source: MusicMetadata
+) -> list[tuple[MusicLink, MusicMetadata]]:
+    field = "track" if kind is ItemType.TRACK else "album"
+    title = _plain_title(source.title).replace('"', "")
+    artist = _primary_artist(source).replace('"', "")
+    payload = _get_json(
+        client,
+        f"{_SPOTIFY_API}/search",
+        params={"q": f'{field}:"{title}" artist:"{artist}"', "type": field, "limit": 10},
+        headers=_spotify_headers(client),
+    )
+    items = ((payload or {}).get(f"{field}s") or {}).get("items") or []
+    return [_spotify_entry(item) for item in items if item]
+
+
+# provider: (describe an item, search for one like it)
+_CATALOGUES = {
+    Provider.SPOTIFY: (_spotify_lookup, _spotify_search),
+    Provider.APPLE_MUSIC: (_itunes_lookup, _itunes_search),
+}
+
+
+# ── Matching ──────────────────────────────────────────────────────────────────
 
 _FEATURING = re.compile(
     r"[(\[]\s*(?:feat|ft|featuring|with)\b[^)\]]*[)\]]|\s-\s(?:feat|ft)\b.*$",
@@ -491,15 +614,23 @@ _ARTIST_SEPARATORS = re.compile(
 )
 
 
+def _plain_title(title: Optional[str]) -> str:
+    """The title without "feat." credits and remaster tags."""
+    return _REMASTER.sub("", _FEATURING.sub("", title or "").strip())
+
+
+def _primary_artist(metadata: MusicMetadata) -> str:
+    return _ARTIST_SEPARATORS.split(metadata.artist_name or "")[0].strip()
+
+
 def _normalize(text: str) -> str:
     """Case, accents, punctuation, "feat." credits and remaster tags don't make a
     different song."""
-    text = _REMASTER.sub("", _FEATURING.sub("", text).strip())
-    text = unicodedata.normalize("NFKD", text).casefold()
+    text = unicodedata.normalize("NFKD", _plain_title(text)).casefold()
     return "".join(char for char in text if char.isalnum())
 
 
-def _artists(name: str) -> set[str]:
+def _artists(name: Optional[str]) -> set[str]:
     return {
         artist
         for artist in map(_normalize, _ARTIST_SEPARATORS.split(name or ""))
@@ -507,12 +638,13 @@ def _artists(name: str) -> set[str]:
     }
 
 
-def _same_music(a: dict[str, Any], b: dict[str, Any]) -> bool:
-    """Same kind, same title, and at least one artist in common."""
-    title_a, title_b = _normalize(a.get("title") or ""), _normalize(b.get("title") or "")
-    return (
-        a.get("type") == b.get("type")
-        and bool(title_a)
-        and title_a == title_b
-        and bool(_artists(a.get("artistName")) & _artists(b.get("artistName")))
-    )
+def _same_music(a: MusicMetadata, b: MusicMetadata) -> bool:
+    """Same title, an artist in common and, when both are known, the same length."""
+    title = _normalize(a.title or "")
+    if not title or title != _normalize(b.title or ""):
+        return False
+    if not _artists(a.artist_name) & _artists(b.artist_name):
+        return False
+    if a.duration_ms and b.duration_ms:
+        return abs(a.duration_ms - b.duration_ms) <= _DURATION_TOLERANCE_MS
+    return True

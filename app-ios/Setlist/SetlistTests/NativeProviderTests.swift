@@ -245,10 +245,7 @@ final class NativeProviderTests: XCTestCase {
         XCTAssertNil(store.currentUser?.nativeProvider)
     }
 
-    func testEveryServiceTheAPIKnowsCanBePicked() {
-        XCTAssertEqual(
-            MusicService.allCases.map(\.rawValue),
-            ["spotify", "apple_music", "youtube_music", "tidal", "deezer", "soundcloud", "bandcamp"]
-        )
+    func testOnlyServicesMusicCanBeMatchedIntoArePicked() {
+        XCTAssertEqual(MusicService.allCases.map(\.rawValue), ["spotify", "apple_music"])
     }
 }

@@ -21,7 +21,7 @@ Setlist/
 | Comments | Threaded under each post; deletable by the comment's author or the post's owner |
 | Profile settings | Display name, bio and avatar |
 | Account settings | Change username, e-mail or password (each confirmed with the current password) and delete the account with everything attached to it |
-| Your music service | Pick Spotify, Apple Music, YouTube Music, TIDAL, Deezer, SoundCloud or Bandcamp in Settings. Shared songs and albums open there when [song.link](https://odesli.co) finds a match whose title and artist agree with the original; otherwise the card says "Not available on …" and offers the shared link. Bandcamp, SoundCloud and playlists always open where they were shared |
+| Your music service | Pick Spotify or Apple Music in Settings. Songs and albums shared from the other one open in yours when its catalogue has one with the same title, artist and length; otherwise the card says "Not available on …" and offers the shared link. Other services and playlists open where they were shared |
 
 ### Configuration
 
@@ -33,8 +33,8 @@ Everything is read from the environment (see `.env.example`):
 | `SECRET_KEY` | dev-only value | **Required in production**: 32+ random characters. The app refuses to start without it |
 | `ACCESS_TOKEN_EXPIRE_MINUTES` | `10080` (7 days) | |
 | `CORS_ORIGINS` | `*` | Comma-separated list |
-| `ENABLE_LINK_METADATA` | `true` | Looks up title/artwork through the providers' public oEmbed endpoints, and the same song on other services through song.link |
-| `ODESLI_API_KEY` | unset | Optional song.link key; without one it allows about 10 lookups a minute |
+| `ENABLE_LINK_METADATA` | `true` | Looks up title/artwork through the providers' public oEmbed endpoints, and the same song on the listener's service through Spotify's Web API and Apple's iTunes Search API |
+| `SPOTIFY_CLIENT_ID`, `SPOTIFY_CLIENT_SECRET` | unset | From a free app at [developer.spotify.com](https://developer.spotify.com/dashboard). Needed for matching into or out of Spotify; no user sign-in is involved |
 | `ENVIRONMENT` | `development` | `production` enables the checks above and disables auto-created tables |
 
 
