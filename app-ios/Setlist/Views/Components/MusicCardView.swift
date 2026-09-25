@@ -1,16 +1,11 @@
 import SwiftUI
 import WebKit
 
-// A shared song or album. It plays in the listener's own service when the
-// backend matched it there, and where it was shared for SoundCloud, Bandcamp or
-// when no service is picked: in the service's web player, or YouTube Music's
-// card. The plain card is the fallback: while looking it up, when the lookup
-// failed, and when the listener's service doesn't have it ("Not available on
-// Spotify").
+// A shared song or album.
+// It plays in the listener's own service when the backend matched it there
 struct MusicCardView: View {
     let music: MusicItem
     var artworkSize: CGFloat = 64
-    // Off for a link that isn't posted yet: shows the original, looks nothing up.
     var showsOpenButton: Bool = true
 
     @Environment(SessionStore.self) private var session
@@ -176,8 +171,7 @@ struct MusicCardView: View {
         }
     }
 
-    // `thenOpen`: the listener tapped play, so failures are explained and a
-    // match shown as the plain card is opened. A player or card just shows.
+    // `thenOpen`: the listener tapped play
     private func lookUp(thenOpen: Bool) async {
         guard !isLookingUp else { return }
         isLookingUp = true
@@ -260,8 +254,7 @@ struct MusicPreviewCard: View {
     }
 }
 
-// YouTube Music in its own colours. It has no player to embed, and YouTube's
-// video player refuses many songs outside YouTube, so tapping it opens the app.
+// YouTube Music in its own colours - tapping it opens the app.
 private struct YouTubeMusicCard: View {
     let music: MusicItem
     let destination: MusicItem.Destination
@@ -321,8 +314,7 @@ private struct YouTubeMusicCard: View {
         .accessibilityLabel("Play \(music.title) on YouTube Music")
     }
 
-    // YouTube serves every video's cover at a fixed address; the 16:9 one,
-    // cropped square, is the album art of a song.
+    // YouTube serves every video's cover at a fixed address
     private var cover: URL? {
         let components = URLComponents(url: destination.url, resolvingAgainstBaseURL: false)
         guard let id = components?.queryItems?.first(where: { $0.name == "v" })?.value else {
@@ -343,9 +335,7 @@ private func playerHeight(provider: String, itemType: String) -> CGFloat {
     }
 }
 
-// A service's own web player, embedded the way a web page would (an iframe on
-// an https page). Links out of it, like the title or
-// "Open in Spotify", open the app or the browser instead of navigating the post.
+// A service's own web player, embedded the way a web page would
 struct EmbeddedPlayer: UIViewRepresentable {
     let url: URL
 
@@ -371,7 +361,6 @@ struct EmbeddedPlayer: UIViewRepresentable {
         webView.loadHTMLString(Self.page(embedding: url), baseURL: Self.pageOrigin)
     }
 
-    // Any https origin will do; YouTube won't play in a page without one.
     private static let pageOrigin = URL(string: "https://setlist.app")!
 
     private static func page(embedding url: URL) -> String {

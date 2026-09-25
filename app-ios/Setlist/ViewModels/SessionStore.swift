@@ -95,7 +95,7 @@ final class SessionStore {
         currentUser = user
     }
 
-    // The service music opens in; nil opens it where it was shared.
+    // The service music opens in
     func setNativeProvider(_ provider: String?) async throws {
         currentUser = try await api.updateNativeProvider(provider)
     }

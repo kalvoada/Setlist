@@ -260,7 +260,7 @@ final class APIService {
         )
     }
 
-    // Where a music item opens on the signed-in user's service; may look it up first.
+    // Where a music item opens on the signed-in user's service
     func nativeLink(musicId: Int) async throws -> NativeLink {
         try await send("/music/\(musicId)/native-link")
     }

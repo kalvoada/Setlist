@@ -110,7 +110,6 @@ struct ProfileUpdateRequest: Encodable {
     var displayName: String?
     var bio: String?
     var avatarUrl: String?
-    // "" clears it; nil leaves it alone.
     var nativeProvider: String?
 }
 

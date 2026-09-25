@@ -11,9 +11,7 @@ struct MusicItem: Codable, Identifiable, Hashable {
     let artistName: String?
     let artworkUrl: String?
     let previewUrl: String?
-    // The original service's own web player, when it has one.
     let embedUrl: String?
-    // Where it opens for the signed-in user; nil until they pick a service.
     var native: NativeLink?
 
     var link: URL? { URL(string: url) }
@@ -73,13 +71,9 @@ struct MusicItem: Codable, Identifiable, Hashable {
 // Where a music item opens for someone who picked a streaming service.
 struct NativeLink: Codable, Hashable {
     enum Status: String, Codable {
-        // `url` is the same item on the listener's service.
         case resolved
-        // Can't be matched reliably (Bandcamp, SoundCloud, playlists): open the shared link.
         case original
-        // Their service doesn't have it.
         case unavailable
-        // Not looked up yet.
         case pending
 
         // A state this version doesn't know is treated as "ask the server".
@@ -93,7 +87,6 @@ struct NativeLink: Codable, Hashable {
     let provider: String
     let providerName: String
     let url: String?
-    // That service's own web player for `url`.
     var embedUrl: String?
 }
 
@@ -108,7 +101,7 @@ extension MusicItem {
         enum Look: Equatable {
             // The service's own web player.
             case player(URL)
-            // YouTube Music has no player to embed; the app draws its card.
+            // YouTube Music has no player to embed - the app draws its card.
             case youTubeMusic
             // The plain card: no player for it.
             case card
@@ -174,7 +167,6 @@ extension MusicItem {
 }
 
 // Services a listener can pick: the ones the backend can match music into.
-// Raw values are the API's provider ids.
 enum MusicService: String, CaseIterable, Identifiable {
     case spotify
     case appleMusic = "apple_music"

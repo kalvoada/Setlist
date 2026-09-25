@@ -19,7 +19,7 @@ struct User: Codable, Identifiable, Hashable {
     var createdAt: Date?
     // Only present for the signed-in user.
     var email: String?
-    // The service music opens in (a `MusicService` raw value); nil opens it where it was shared.
+    // The service music opens in (a `MusicService` raw value) - nil opens it where it was shared.
     var nativeProvider: String?
 
     // What to show as the primary name in the UI.
