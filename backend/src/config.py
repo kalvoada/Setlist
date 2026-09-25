@@ -6,7 +6,7 @@ which is what makes the service deployable without code changes.
 """
 
 from functools import lru_cache
-from typing import List
+from typing import List, Optional
 
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -38,9 +38,12 @@ class Settings(BaseSettings):
 
     # ── Music link resolution ─────────────────────────────────────────────
     # When enabled the API enriches posted streaming links with title/artwork
-    # via the providers' public oEmbed endpoints. Disabled in tests.
+    # via the providers' public oEmbed endpoints, and finds the same song on
+    # the listener's own service through song.link. Disabled in tests.
     enable_link_metadata: bool = True
     link_metadata_timeout_seconds: float = 4.0
+    # Optional: without a key song.link allows about 10 lookups a minute.
+    odesli_api_key: Optional[str] = None
 
     @field_validator("cors_origins", mode="before")
     @classmethod

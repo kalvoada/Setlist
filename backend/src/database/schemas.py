@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import re
 from datetime import datetime, timezone
-from typing import Annotated, Generic, List, Optional, TypeVar
+from typing import Annotated, Generic, List, Literal, Optional, TypeVar
 
 from pydantic import (
     BaseModel,
@@ -14,6 +14,8 @@ from pydantic import (
     PlainSerializer,
     field_validator,
 )
+
+from ..music import Provider
 
 T = TypeVar("T")
 
@@ -127,6 +129,7 @@ class CurrentUser(UserProfile):
     """The authenticated user — includes private fields."""
 
     email: EmailStr
+    native_provider: Optional[str] = None
 
 
 class ProfileUpdate(BaseModel):
@@ -135,6 +138,15 @@ class ProfileUpdate(BaseModel):
     display_name: Optional[str] = Field(default=None, max_length=50)
     bio: Optional[str] = Field(default=None, max_length=300)
     avatar_url: Optional[str] = Field(default=None, max_length=500)
+    # A provider value, or "" to go back to opening music where it was shared.
+    native_provider: Optional[str] = None
+
+    @field_validator("native_provider")
+    @classmethod
+    def _native_provider(cls, value: Optional[str]) -> Optional[str]:
+        if value and value not in {provider.value for provider in Provider}:
+            raise ValueError("Unknown music service.")
+        return value
 
 
 class AccountUpdate(BaseModel):
@@ -167,6 +179,23 @@ class FollowState(BaseModel):
 
 
 # ── Music ─────────────────────────────────────────────────────────────────────
+class NativeLink(BaseModel):
+    """
+    Where a music item opens for a listener who picked a service.
+
+    * ``resolved``: ``url`` is the item on that service.
+    * ``original``: the item cannot be translated reliably (Bandcamp,
+      SoundCloud, playlists), so it opens where it was shared.
+    * ``unavailable``: the service has no match; offer the original link.
+    * ``pending``: not looked up yet; ask ``GET /music/{id}/native-link``.
+    """
+
+    status: Literal["resolved", "original", "unavailable", "pending"]
+    provider: str
+    provider_name: str
+    url: Optional[str] = None
+
+
 class MusicItem(BaseModel):
     model_config = ORM
 
@@ -179,6 +208,8 @@ class MusicItem(BaseModel):
     artist_name: Optional[str] = None
     artwork_url: Optional[str] = None
     preview_url: Optional[str] = None
+    # Only when the viewer has picked a music service.
+    native: Optional[NativeLink] = None
 
 
 class MusicLinkPreview(BaseModel):

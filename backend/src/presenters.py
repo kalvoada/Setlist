@@ -8,6 +8,7 @@ per row.
 
 from __future__ import annotations
 
+from datetime import timedelta
 from typing import List, Optional, Sequence
 
 from sqlalchemy.orm import Session
@@ -23,7 +24,45 @@ def provider_name(provider: str) -> str:
         return provider.replace("_", " ").title()
 
 
-def music_item(item: models.DBMusicItem) -> schemas.MusicItem:
+# A service that had no match is asked again after this long: new releases
+# often reach one service before another.
+RETRY_UNAVAILABLE_AFTER = timedelta(days=1)
+
+
+def native_link(
+    item: models.DBMusicItem, native_provider: Optional[str]
+) -> Optional[schemas.NativeLink]:
+    """Where ``item`` opens for someone on ``native_provider``. Never calls out."""
+    if not native_provider:
+        return None
+
+    def link(status: str, url: Optional[str] = None) -> schemas.NativeLink:
+        return schemas.NativeLink(
+            status=status,
+            provider=native_provider,
+            provider_name=provider_name(native_provider),
+            url=url,
+        )
+
+    if item.provider == native_provider:
+        return link("resolved", item.url)
+    if not music_links.can_translate(item.provider, native_provider, item.item_type):
+        return link("original")
+
+    links = item.provider_links or {}
+    if native_provider in links:
+        return link("resolved", links[native_provider])
+    if (
+        item.links_resolved_at is None
+        or item.links_resolved_at < models.utcnow() - RETRY_UNAVAILABLE_AFTER
+    ):
+        return link("pending")
+    return link("unavailable")
+
+
+def music_item(
+    item: models.DBMusicItem, native_provider: Optional[str] = None
+) -> schemas.MusicItem:
     return schemas.MusicItem(
         id=item.id,
         provider=item.provider,
@@ -34,6 +73,7 @@ def music_item(item: models.DBMusicItem) -> schemas.MusicItem:
         artist_name=item.artist_name,
         artwork_url=item.artwork_url,
         preview_url=item.preview_url,
+        native=native_link(item, native_provider),
     )
 
 
@@ -92,7 +132,9 @@ def user_profile(
 
 def current_user(db: Session, user: models.DBUser) -> schemas.CurrentUser:
     profile = user_profile(db, user, user)
-    return schemas.CurrentUser(**profile.model_dump(), email=user.email)
+    return schemas.CurrentUser(
+        **profile.model_dump(), email=user.email, native_provider=user.native_provider
+    )
 
 
 def posts_out(
@@ -106,6 +148,7 @@ def posts_out(
     liked = (
         crud.likes.liked_subset(db, viewer.id, post_ids) if viewer is not None else set()
     )
+    native_provider = viewer.native_provider if viewer is not None else None
 
     return [
         schemas.Post(
@@ -113,7 +156,7 @@ def posts_out(
             caption=post.caption or "",
             created_at=post.created_at,
             author=user_public(post.author),
-            music=music_item(post.music),
+            music=music_item(post.music, native_provider),
             likes_count=likes.get(post.id, 0),
             comments_count=comments.get(post.id, 0),
             is_liked=post.id in liked,

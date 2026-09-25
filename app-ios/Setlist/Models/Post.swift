@@ -11,6 +11,8 @@ struct MusicItem: Codable, Identifiable, Hashable {
     let artistName: String?
     let artworkUrl: String?
     let previewUrl: String?
+    // Where it opens for the signed-in user; nil until they pick a service.
+    var native: NativeLink?
 
     var link: URL? { URL(string: url) }
     var artworkURL: URL? {
@@ -18,17 +20,17 @@ struct MusicItem: Codable, Identifiable, Hashable {
         return URL(string: artworkUrl)
     }
 
-    var subtitle: String {
-        let kind: String
+    var kindName: String {
         switch itemType {
-        case "track": kind = "Song"
-        case "album": kind = "Album"
-        case "playlist": kind = "Playlist"
-        case "artist": kind = "Artist"
-        default: kind = itemType.capitalized
+        case "track": return "Song"
+        case "album": return "Album"
+        case "playlist": return "Playlist"
+        case "artist": return "Artist"
+        default: return itemType.capitalized
         }
-        return "\(kind) · \(providerName)" //TODO: display current user's provider
     }
+
+    var subtitle: String { "\(kindName) · \(providerName)" }
 
     var symbolName: String {
         switch itemType {
@@ -48,7 +50,8 @@ struct MusicItem: Codable, Identifiable, Hashable {
         title: String,
         artistName: String? = nil,
         artworkUrl: String? = nil,
-        previewUrl: String? = nil
+        previewUrl: String? = nil,
+        native: NativeLink? = nil
     ) {
         self.id = id
         self.provider = provider
@@ -59,6 +62,88 @@ struct MusicItem: Codable, Identifiable, Hashable {
         self.artistName = artistName
         self.artworkUrl = artworkUrl
         self.previewUrl = previewUrl
+        self.native = native
+    }
+}
+
+// Where a music item opens for someone who picked a streaming service.
+struct NativeLink: Codable, Hashable {
+    enum Status: String, Codable {
+        // `url` is the same item on the listener's service.
+        case resolved
+        // Can't be matched reliably (Bandcamp, SoundCloud, playlists): open the shared link.
+        case original
+        // Their service doesn't have it.
+        case unavailable
+        // Not looked up yet.
+        case pending
+
+        // A state this version doesn't know is treated as "ask the server".
+        init(from decoder: Decoder) throws {
+            let raw = try decoder.singleValueContainer().decode(String.self)
+            self = Status(rawValue: raw) ?? .pending
+        }
+    }
+
+    let status: Status
+    let provider: String
+    let providerName: String
+    let url: String?
+}
+
+extension MusicItem {
+    // What the play button does for someone listening on `nativeProvider`.
+    enum ListenAction: Equatable {
+        case open(URL, service: String)
+        // Not on their service: say so and offer the shared link.
+        case unavailable(service: String)
+        // Not looked up yet, or looked up for a service they have since switched from.
+        case lookUp
+    }
+
+    func listenAction(nativeProvider: String?) -> ListenAction? {
+        guard let link else { return nil }
+        guard let nativeProvider else { return .open(link, service: providerName) }
+        guard let native, native.provider == nativeProvider else { return .lookUp }
+
+        switch native.status {
+        case .resolved:
+            guard let url = native.url.flatMap(URL.init(string:)) else {
+                return .unavailable(service: native.providerName)
+            }
+            return .open(url, service: native.providerName)
+        case .original:
+            return .open(link, service: providerName)
+        case .unavailable:
+            return .unavailable(service: native.providerName)
+        case .pending:
+            return .lookUp
+        }
+    }
+}
+
+// Services a listener can pick; raw values are the API's provider ids.
+enum MusicService: String, CaseIterable, Identifiable {
+    case spotify
+    case appleMusic = "apple_music"
+    case youtubeMusic = "youtube_music"
+    case tidal
+    case deezer
+    case soundcloud
+    case bandcamp
+
+    var id: String { rawValue }
+
+    var name: String {
+        switch self {
+        case .spotify: return "Spotify"
+        case .appleMusic: return "Apple Music"
+        case .youtubeMusic: return "YouTube Music"
+        case .tidal: return "TIDAL"
+        case .deezer: return "Deezer"
+        case .soundcloud: return "SoundCloud"
+        case .bandcamp: return "Bandcamp"
+        }
     }
 }
 

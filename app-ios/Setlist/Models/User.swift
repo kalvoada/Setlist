@@ -19,6 +19,8 @@ struct User: Codable, Identifiable, Hashable {
     var createdAt: Date?
     // Only present for the signed-in user.
     var email: String?
+    // The service music opens in (a `MusicService` raw value); nil opens it where it was shared.
+    var nativeProvider: String?
 
     // What to show as the primary name in the UI.
     var name: String {
@@ -54,6 +56,7 @@ struct User: Codable, Identifiable, Hashable {
         isMe = try container.decodeIfPresent(Bool.self, forKey: .isMe) ?? false
         createdAt = try container.decodeIfPresent(Date.self, forKey: .createdAt)
         email = try container.decodeIfPresent(String.self, forKey: .email)
+        nativeProvider = try container.decodeIfPresent(String.self, forKey: .nativeProvider)
     }
 
     init(
@@ -69,7 +72,8 @@ struct User: Codable, Identifiable, Hashable {
         isFollowedBy: Bool = false,
         isMe: Bool = false,
         createdAt: Date? = nil,
-        email: String? = nil
+        email: String? = nil,
+        nativeProvider: String? = nil
     ) {
         self.id = id
         self.username = username
@@ -84,5 +88,6 @@ struct User: Codable, Identifiable, Hashable {
         self.isMe = isMe
         self.createdAt = createdAt
         self.email = email
+        self.nativeProvider = nativeProvider
     }
 }

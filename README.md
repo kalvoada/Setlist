@@ -21,6 +21,7 @@ Setlist/
 | Comments | Threaded under each post; deletable by the comment's author or the post's owner |
 | Profile settings | Display name, bio and avatar |
 | Account settings | Change username, e-mail or password (each confirmed with the current password) and delete the account with everything attached to it |
+| Your music service | Pick Spotify, Apple Music, YouTube Music, TIDAL, Deezer, SoundCloud or Bandcamp in Settings. Shared songs and albums open there when [song.link](https://odesli.co) finds a match whose title and artist agree with the original; otherwise the card says "Not available on …" and offers the shared link. Bandcamp, SoundCloud and playlists always open where they were shared |
 
 ### Configuration
 
@@ -32,7 +33,8 @@ Everything is read from the environment (see `.env.example`):
 | `SECRET_KEY` | dev-only value | **Required in production**: 32+ random characters. The app refuses to start without it |
 | `ACCESS_TOKEN_EXPIRE_MINUTES` | `10080` (7 days) | |
 | `CORS_ORIGINS` | `*` | Comma-separated list |
-| `ENABLE_LINK_METADATA` | `true` | Looks up title/artwork through the providers' public oEmbed endpoints |
+| `ENABLE_LINK_METADATA` | `true` | Looks up title/artwork through the providers' public oEmbed endpoints, and the same song on other services through song.link |
+| `ODESLI_API_KEY` | unset | Optional song.link key; without one it allows about 10 lookups a minute |
 | `ENVIRONMENT` | `development` | `production` enables the checks above and disables auto-created tables |
 
 
@@ -47,7 +49,7 @@ All list endpoints return `{ items, limit, offset, total, has_more }` and take
 | `POST` | `/auth/login` | Sign in with username **or** e-mail |
 | `POST` | `/auth/refresh` | Exchange a valid token for a fresh one |
 | `GET` | `/users/me` | The signed-in user |
-| `PATCH` | `/users/me` | Edit display name, bio, avatar |
+| `PATCH` | `/users/me` | Edit display name, bio, avatar, music service (`native_provider`, `""` to clear) |
 | `PATCH` | `/users/me/account` | Change username / e-mail / password |
 | `DELETE` | `/users/me` | Delete the account |
 | `GET` | `/users/search?q=` | Search by username or display name |
@@ -57,6 +59,7 @@ All list endpoints return `{ items, limit, offset, total, has_more }` and take
 | `POST`/`DELETE` | `/users/{id}/follow` | Follow / unfollow |
 | `GET` | `/users/{id}/followers`, `/following` | The follow graph |
 | `POST` | `/posts/resolve-link` | Turn a streaming link into a preview |
+| `GET` | `/music/{id}/native-link` | Where a post's music opens on your service, looking it up if needed |
 | `POST` | `/posts/` | Create a post (a valid music link is required) |
 | `GET` | `/posts/` | Discover timeline |
 | `GET` | `/posts/feed` | Posts from the people you follow, plus your own |

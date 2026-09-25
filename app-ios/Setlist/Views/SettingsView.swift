@@ -8,6 +8,7 @@ struct SettingsView: View {
 
     @State private var isEditingProfile = false
     @State private var showingSignOutConfirmation = false
+    @State private var errorMessage: String?
 
     var body: some View {
         List {
@@ -38,6 +39,21 @@ struct SettingsView: View {
                 } label: {
                     Label("Account", systemImage: "lock")
                 }
+            }
+
+            Section {
+                Picker(selection: nativeProvider) {
+                    Text("Where it was shared").tag(String?.none)
+                    ForEach(MusicService.allCases) { service in
+                        Text(service.name).tag(Optional(service.rawValue))
+                    }
+                } label: {
+                    Label("Open music in", systemImage: "music.note")
+                }
+            } header: {
+                Text("Music")
+            } footer: {
+                Text("Songs and albums shared from other services open in yours when there's a match. Bandcamp, SoundCloud and playlists open where they were shared.")
             }
 
             Section("Activity") {
@@ -78,6 +94,33 @@ struct SettingsView: View {
             Button("Sign out", role: .destructive) { session.signOut() }
             Button("Cancel", role: .cancel) {}
         }
+        .alert(
+            "Something went wrong",
+            isPresented: Binding(
+                get: { errorMessage != nil },
+                set: { if !$0 { errorMessage = nil } }
+            )
+        ) {
+            Button("OK", role: .cancel) { errorMessage = nil }
+        } message: {
+            Text(errorMessage ?? "")
+        }
+    }
+
+    // Saved on the account, so it follows the user to other devices.
+    private var nativeProvider: Binding<String?> {
+        Binding(
+            get: { session.currentUser?.nativeProvider },
+            set: { provider in
+                Task {
+                    do {
+                        try await session.setNativeProvider(provider)
+                    } catch {
+                        errorMessage = error.localizedDescription
+                    }
+                }
+            }
+        )
     }
 }
 

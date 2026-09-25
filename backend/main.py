@@ -7,7 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from src.config import settings
 from src.database.database import Base, engine
-from src.routers import auth, comments, posts, users
+from src.routers import auth, comments, music, posts, users
 
 DESCRIPTION = """
 The backend for **Setlist**, a social app for sharing music.
@@ -16,6 +16,7 @@ The backend for **Setlist**, a social app for sharing music.
 * Follow people and read a feed of what they are listening to
 * Post a song, album or playlist from Spotify, Apple Music, YouTube Music,
   SoundCloud, TIDAL, Deezer or Bandcamp
+* Open shared music on your own streaming service
 * Like and comment on posts
 * Edit your profile and account settings
 """
@@ -42,6 +43,7 @@ def create_app() -> FastAPI:
     app.include_router(users.router)
     app.include_router(posts.router)
     app.include_router(comments.router)
+    app.include_router(music.router)
 
     @app.get("/", tags=["meta"])
     def root():

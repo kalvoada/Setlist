@@ -5,9 +5,10 @@ Parsing and enrichment of streaming-service links.
 from __future__ import annotations
 
 import re
+import unicodedata
 from dataclasses import dataclass
 from enum import Enum
-from typing import Optional
+from typing import Any, Optional
 from urllib.parse import parse_qs, urlparse
 
 import httpx
@@ -298,9 +299,9 @@ def fetch_metadata(link: MusicLink) -> MusicMetadata:
     return MusicMetadata()
 
 
-def _client() -> httpx.Client:
+def _client(timeout: Optional[float] = None) -> httpx.Client:
     return httpx.Client(
-        timeout=settings.link_metadata_timeout_seconds,
+        timeout=timeout or settings.link_metadata_timeout_seconds,
         follow_redirects=True,
         headers={"User-Agent": "SetlistBot/1.0 (+https://github.com/kalvoada/Setlist)"},
     )
@@ -375,3 +376,130 @@ def fallback_title(link: MusicLink) -> str:
         return slug.title()[:300]
 
     return f"{PROVIDER_DISPLAY_NAMES[link.provider]} {link.item_type.value}"
+
+
+# ── Cross-provider links ──────────────────────────────────────────────────────
+#
+# song.link (Odesli) maps a streaming link onto the other services in one
+# unauthenticated call. Its answers are only kept when the other service's own
+# metadata agrees with the original's, so a wrong match reads as "not
+# available" instead of opening the wrong song.
+
+_ODESLI_URL = "https://api.song.link/v1-alpha.1/links"
+_RESOLVE_TIMEOUT_SECONDS = 10.0
+
+# Bandcamp is not covered, and SoundCloud is mostly user uploads, so a "match"
+# there is as likely a re-upload as the real thing: both stay on their own links.
+_ODESLI_PLATFORMS = {
+    Provider.SPOTIFY: "spotify",
+    Provider.APPLE_MUSIC: "appleMusic",
+    Provider.YOUTUBE_MUSIC: "youtubeMusic",
+    Provider.TIDAL: "tidal",
+    Provider.DEEZER: "deezer",
+}
+
+# Playlists and artist pages are specific to one service.
+_TRANSLATABLE_TYPES = {ItemType.TRACK, ItemType.ALBUM}
+
+
+class LinkResolutionError(RuntimeError):
+    """The lookup failed for now (network, timeout, rate limit); try again later."""
+
+
+def can_translate(source: str, target: str, item_type: str) -> bool:
+    """Whether an item on ``source`` can have a reliable equivalent on ``target``."""
+    try:
+        providers = {Provider(source), Provider(target)}
+        kind = ItemType(item_type)
+    except ValueError:
+        return False
+    return kind in _TRANSLATABLE_TYPES and providers <= _ODESLI_PLATFORMS.keys()
+
+
+def resolve_links(url: str) -> dict[str, str]:
+    """
+    Verified links to the same song or album on other services, keyed by
+    provider value. An empty dict means none were found.
+
+    Raises :class:`LinkResolutionError` when the answer is unknown for now.
+    """
+    if not settings.enable_link_metadata:
+        raise LinkResolutionError("Link lookups are disabled.")
+
+    params = {"url": url}
+    if settings.odesli_api_key:
+        params["key"] = settings.odesli_api_key
+
+    try:
+        with _client(timeout=_RESOLVE_TIMEOUT_SECONDS) as client:
+            response = client.get(_ODESLI_URL, params=params)
+    except httpx.HTTPError as exc:
+        raise LinkResolutionError(str(exc)) from exc
+
+    # 400/404: song.link does not know this item, which is an answer too.
+    if response.status_code in {400, 404}:
+        return {}
+    if response.status_code != 200:
+        raise LinkResolutionError(f"song.link answered {response.status_code}")
+
+    try:
+        return verified_links(response.json())
+    except (ValueError, AttributeError, TypeError) as exc:
+        raise LinkResolutionError("song.link sent an unexpected answer") from exc
+
+
+def verified_links(payload: dict[str, Any]) -> dict[str, str]:
+    """Pick the matches out of a song.link response that agree with the original."""
+    entities = payload.get("entitiesByUniqueId") or {}
+    source_id = payload.get("entityUniqueId")
+    source = entities.get(source_id)
+    if not source:
+        return {}
+
+    links: dict[str, str] = {}
+    for provider, platform in _ODESLI_PLATFORMS.items():
+        entry = (payload.get("linksByPlatform") or {}).get(platform) or {}
+        entity = entities.get(entry.get("entityUniqueId"))
+        if not entity or entry.get("entityUniqueId") == source_id:
+            continue
+        try:
+            link = parse_music_url(entry.get("url") or "")
+        except UnsupportedMusicLinkError:
+            continue
+        if link.provider is provider and _same_music(source, entity):
+            links[provider.value] = link.url
+    return links
+
+
+_FEATURING = re.compile(
+    r"[(\[]\s*(?:feat|ft|featuring|with)\b[^)\]]*[)\]]|\s-\s(?:feat|ft)\b.*$",
+    re.IGNORECASE,
+)
+_ARTIST_SEPARATORS = re.compile(
+    r"[,&;/+]|\s(?:feat\.?|ft\.?|featuring|with|and|x)\s", re.IGNORECASE
+)
+
+
+def _normalize(text: str) -> str:
+    """Case, accents, punctuation and "feat." credits don't make a different song."""
+    text = unicodedata.normalize("NFKD", _FEATURING.sub("", text)).casefold()
+    return "".join(char for char in text if char.isalnum())
+
+
+def _artists(name: str) -> set[str]:
+    return {
+        artist
+        for artist in map(_normalize, _ARTIST_SEPARATORS.split(name or ""))
+        if artist
+    }
+
+
+def _same_music(a: dict[str, Any], b: dict[str, Any]) -> bool:
+    """Same kind, same title, and at least one artist in common."""
+    title_a, title_b = _normalize(a.get("title") or ""), _normalize(b.get("title") or "")
+    return (
+        a.get("type") == b.get("type")
+        and bool(title_a)
+        and title_a == title_b
+        and bool(_artists(a.get("artistName")) & _artists(b.get("artistName")))
+    )

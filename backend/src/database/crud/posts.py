@@ -52,6 +52,20 @@ def get_or_create_music_item(
     return item
 
 
+def get_music_item(db: Session, item_id: int) -> Optional[models.DBMusicItem]:
+    return db.get(models.DBMusicItem, item_id)
+
+
+def save_provider_links(
+    db: Session, item: models.DBMusicItem, links: dict[str, str]
+) -> models.DBMusicItem:
+    item.provider_links = links
+    item.links_resolved_at = models.utcnow()
+    db.commit()
+    db.refresh(item)
+    return item
+
+
 def create_post(
     db: Session,
     *,
