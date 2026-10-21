@@ -11,6 +11,8 @@ struct MusicItem: Codable, Identifiable, Hashable {
     let artistName: String?
     let artworkUrl: String?
     let previewUrl: String?
+    let embedUrl: String?
+    var native: NativeLink?
 
     var link: URL? { URL(string: url) }
     var artworkURL: URL? {
@@ -18,17 +20,17 @@ struct MusicItem: Codable, Identifiable, Hashable {
         return URL(string: artworkUrl)
     }
 
-    var subtitle: String {
-        let kind: String
+    var kindName: String {
         switch itemType {
-        case "track": kind = "Song"
-        case "album": kind = "Album"
-        case "playlist": kind = "Playlist"
-        case "artist": kind = "Artist"
-        default: kind = itemType.capitalized
+        case "track": return "Song"
+        case "album": return "Album"
+        case "playlist": return "Playlist"
+        case "artist": return "Artist"
+        default: return itemType.capitalized
         }
-        return "\(kind) · \(providerName)" //TODO: display current user's provider
     }
+
+    var subtitle: String { "\(kindName) · \(providerName)" }
 
     var symbolName: String {
         switch itemType {
@@ -48,7 +50,9 @@ struct MusicItem: Codable, Identifiable, Hashable {
         title: String,
         artistName: String? = nil,
         artworkUrl: String? = nil,
-        previewUrl: String? = nil
+        previewUrl: String? = nil,
+        embedUrl: String? = nil,
+        native: NativeLink? = nil
     ) {
         self.id = id
         self.provider = provider
@@ -59,6 +63,123 @@ struct MusicItem: Codable, Identifiable, Hashable {
         self.artistName = artistName
         self.artworkUrl = artworkUrl
         self.previewUrl = previewUrl
+        self.embedUrl = embedUrl
+        self.native = native
+    }
+}
+
+// Where a music item opens for someone who picked a streaming service.
+struct NativeLink: Codable, Hashable {
+    enum Status: String, Codable {
+        case resolved
+        case original
+        case unavailable
+        case pending
+
+        // A state this version doesn't know is treated as "ask the server".
+        init(from decoder: Decoder) throws {
+            let raw = try decoder.singleValueContainer().decode(String.self)
+            self = Status(rawValue: raw) ?? .pending
+        }
+    }
+
+    let status: Status
+    let provider: String
+    let providerName: String
+    let url: String?
+    var embedUrl: String?
+}
+
+extension MusicItem {
+    // Where the music is played: which service, its link, and its web player.
+    struct Destination: Equatable {
+        let url: URL
+        let service: String
+        let provider: String
+        let player: URL?
+
+        enum Look: Equatable {
+            // The service's own web player.
+            case player(URL)
+            // YouTube Music has no player to embed - the app draws its card.
+            case youTubeMusic
+            // The plain card: no player for it.
+            case card
+        }
+
+        var look: Look {
+            if let player { return .player(player) }
+            return provider == "youtube_music" ? .youTubeMusic : .card
+        }
+    }
+
+    // What the card shows for someone listening on `nativeProvider`.
+    enum ListenAction: Equatable {
+        case open(Destination)
+        // Not on their service: say so and offer the shared link.
+        case unavailable(service: String)
+        // Not looked up yet, or looked up for a service they have since switched from.
+        case lookUp
+    }
+
+    func listenAction(nativeProvider: String?) -> ListenAction? {
+        guard let link else { return nil }
+        let original = Destination(
+            url: link, service: providerName, provider: provider, player: Self.player(embedUrl)
+        )
+        guard let nativeProvider else { return .open(original) }
+        guard let native, native.provider == nativeProvider else { return .lookUp }
+
+        switch native.status {
+        case .resolved:
+            guard let url = native.url.flatMap(URL.init(string:)) else {
+                return .unavailable(service: native.providerName)
+            }
+            return .open(Destination(
+                url: url,
+                service: native.providerName,
+                provider: native.provider,
+                player: Self.player(native.embedUrl)
+            ))
+        case .original:
+            return .open(original)
+        case .unavailable:
+            return .unavailable(service: native.providerName)
+        case .pending:
+            return .lookUp
+        }
+    }
+
+    // Only the services' own players are ever loaded into a post.
+    static let playerHosts: Set<String> = [
+        "open.spotify.com", "embed.music.apple.com", "www.youtube.com",
+        "w.soundcloud.com", "bandcamp.com"
+    ]
+
+    private static func player(_ string: String?) -> URL? {
+        guard let url = string.flatMap(URL.init(string:)),
+              url.scheme == "https",
+              let host = url.host,
+              playerHosts.contains(host)
+        else { return nil }
+        return url
+    }
+}
+
+// Services a listener can pick: the ones the backend can match music into.
+enum MusicService: String, CaseIterable, Identifiable {
+    case spotify
+    case appleMusic = "apple_music"
+    case youtubeMusic = "youtube_music"
+
+    var id: String { rawValue }
+
+    var name: String {
+        switch self {
+        case .spotify: return "Spotify"
+        case .appleMusic: return "Apple Music"
+        case .youtubeMusic: return "YouTube Music"
+        }
     }
 }
 
@@ -72,6 +193,7 @@ struct MusicLinkPreview: Codable, Hashable {
     let artistName: String?
     let artworkUrl: String?
     let previewUrl: String?
+    var embedUrl: String?
 
     var artworkURL: URL? {
         guard let artworkUrl, !artworkUrl.isEmpty else { return nil }
@@ -88,7 +210,8 @@ struct MusicLinkPreview: Codable, Hashable {
             title: title,
             artistName: artistName,
             artworkUrl: artworkUrl,
-            previewUrl: previewUrl
+            previewUrl: previewUrl,
+            embedUrl: embedUrl
         )
     }
 }

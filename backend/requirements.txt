@@ -10,6 +10,10 @@ python-multipart==0.0.20
 bcrypt==5.0.0
 pyjwt==2.13.0
 httpx==0.28.1
+# Tolerant title/artist comparison when matching music across services.
+rapidfuzz==3.14.6
+# YouTube Music search and lookups; YouTube Music has no official API.
+ytmusicapi==1.12.3
 pytest==9.1.1
 
 # Postgres driver — uncomment for a Postgres deployment

@@ -24,9 +24,16 @@ def _get_post_or_404(db, post_id: int) -> models.DBPost:
 
 def _parse_link(url: str) -> music_links.MusicLink:
     try:
-        return music_links.parse_music_url(url)
+        link = music_links.parse_music_url(url)
     except music_links.UnsupportedMusicLinkError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+    if link.item_type not in music_links.SHAREABLE_TYPES:
+        raise HTTPException(
+            status_code=422,
+            detail="Share a song or an album. Playlists and artist pages only exist "
+            "on one service, so they can't be shared yet.",
+        )
+    return link
 
 
 # ── Composing ─────────────────────────────────────────────────────────────────
@@ -44,6 +51,7 @@ def resolve_link(payload: schemas.LinkResolveRequest, _: CurrentUser):
         artist_name=metadata.artist_name,
         artwork_url=metadata.artwork_url,
         preview_url=metadata.preview_url,
+        embed_url=music_links.embed_url(link.url, metadata.embed_url),
     )
 
 
@@ -61,6 +69,9 @@ def create_post(payload: schemas.PostCreate, current_user: CurrentUser, db: DBSe
     if not metadata.title:
         # The client did not pre-resolve the link, so look it up now.
         metadata = music_links.fetch_metadata(link)
+    elif link.provider is music_links.Provider.BANDCAMP:
+        # Its player id is on the page; never taken from the client.
+        metadata.embed_url = music_links.fetch_metadata(link).embed_url
 
     music_item = posts_crud.get_or_create_music_item(db, link, metadata)
     post = posts_crud.create_post(

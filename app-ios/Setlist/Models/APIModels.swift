@@ -110,6 +110,7 @@ struct ProfileUpdateRequest: Encodable {
     var displayName: String?
     var bio: String?
     var avatarUrl: String?
+    var nativeProvider: String?
 }
 
 struct AccountUpdateRequest: Encodable {

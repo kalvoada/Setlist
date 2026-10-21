@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 from typing import List, Optional
 
 from sqlalchemy import (
+    JSON,
     Boolean,
     CheckConstraint,
     DateTime,
@@ -36,6 +37,8 @@ class DBUser(Base):
     display_name: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
     bio: Mapped[str] = mapped_column(String(300), default="", server_default="")
     avatar_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    # The streaming service music should open in; None keeps the shared link.
+    native_provider: Mapped[Optional[str]] = mapped_column(String(30), nullable=True)
 
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, server_default="1")
 
@@ -121,6 +124,14 @@ class DBMusicItem(Base):
     artist_name: Mapped[Optional[str]] = mapped_column(String(300), nullable=True)
     artwork_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
     preview_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+
+    # The same item on other services: {provider: url, or None for "no match"}.
+    # A provider missing from it hasn't been looked up yet.
+    provider_links: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    links_resolved_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    # The player a Bandcamp page advertises; other services' players are built
+    # from the URL.
+    embed_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 

@@ -87,6 +87,8 @@ def update_profile(
     if "avatar_url" in data:
         value = (data["avatar_url"] or "").strip()
         user.avatar_url = value or None
+    if "native_provider" in data:
+        user.native_provider = data["native_provider"] or None
 
     db.commit()
     db.refresh(user)

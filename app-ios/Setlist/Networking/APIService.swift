@@ -151,6 +151,15 @@ final class APIService {
         )
     }
 
+    // nil goes back to opening music where it was shared.
+    func updateNativeProvider(_ provider: String?) async throws -> User {
+        try await send(
+            "/users/me",
+            method: .patch,
+            body: ProfileUpdateRequest(nativeProvider: provider ?? "")
+        )
+    }
+
     func updateAccount(
         currentPassword: String,
         username: String? = nil,
@@ -251,6 +260,11 @@ final class APIService {
                 previewUrl: preview?.previewUrl
             )
         )
+    }
+
+    // Where a music item opens on the signed-in user's service
+    func nativeLink(musicId: Int) async throws -> NativeLink {
+        try await send("/music/\(musicId)/native-link")
     }
 
     func updatePost(id: Int, caption: String) async throws -> Post {

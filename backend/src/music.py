@@ -4,15 +4,26 @@ Parsing and enrichment of streaming-service links.
 
 from __future__ import annotations
 
+import functools
+import html as html_entities
+import json
+import logging
 import re
+import time
+import unicodedata
 from dataclasses import dataclass
 from enum import Enum
-from typing import Optional
-from urllib.parse import parse_qs, urlparse
+from typing import Any, Optional
+from urllib.parse import parse_qs, urlencode, urlparse
 
 import httpx
+import requests
+from rapidfuzz import fuzz
+from ytmusicapi import YTMusic
 
 from .config import settings
+
+logger = logging.getLogger(__name__)
 
 
 class Provider(str, Enum):
@@ -20,8 +31,6 @@ class Provider(str, Enum):
     APPLE_MUSIC = "apple_music"
     YOUTUBE_MUSIC = "youtube_music"
     SOUNDCLOUD = "soundcloud"
-    TIDAL = "tidal"
-    DEEZER = "deezer"
     BANDCAMP = "bandcamp"
 
 
@@ -37,8 +46,6 @@ PROVIDER_DISPLAY_NAMES = {
     Provider.APPLE_MUSIC: "Apple Music",
     Provider.YOUTUBE_MUSIC: "YouTube Music",
     Provider.SOUNDCLOUD: "SoundCloud",
-    Provider.TIDAL: "TIDAL",
-    Provider.DEEZER: "Deezer",
     Provider.BANDCAMP: "Bandcamp",
 }
 
@@ -59,6 +66,10 @@ class MusicMetadata:
     artist_name: Optional[str] = None
     artwork_url: Optional[str] = None
     preview_url: Optional[str] = None
+    # Tracks only; tells a remaster from a live take or an edit when matching.
+    duration_ms: Optional[int] = None
+    # Bandcamp's player needs a numeric id that only its page has (og:video).
+    embed_url: Optional[str] = None
 
 
 class UnsupportedMusicLinkError(ValueError):
@@ -80,10 +91,6 @@ _APPLE_PATH = re.compile(
     r"^/[a-z]{2}/(album|playlist|song|artist|music-video)/([^/]+)/([^/?#]+)"
 )
 _BANDCAMP_PATH = re.compile(r"^/(track|album)/([^/?#]+)")
-_TIDAL_PATH = re.compile(r"^/(?:browse/)?(track|album|playlist|artist)/([^/?#]+)")
-_DEEZER_PATH = re.compile(
-    r"^/(?:[a-z]{2}/)?(track|album|playlist|artist)/([0-9]+)"
-)
 _SOUNDCLOUD_SET = re.compile(r"^/([^/?#]+)/sets/([^/?#]+)")
 _SOUNDCLOUD_TRACK = re.compile(r"^/([^/?#]+)/([^/?#]+)")
 
@@ -129,16 +136,12 @@ def parse_music_url(raw_url: str) -> MusicLink:
         return _parse_youtube(host, path, parsed.query, url)
     if host in {"soundcloud.com", "m.soundcloud.com", "on.soundcloud.com"}:
         return _parse_soundcloud(path, url)
-    if host in {"tidal.com", "listen.tidal.com", "embed.tidal.com"}:
-        return _parse_simple(_TIDAL_PATH, Provider.TIDAL, path, url)
-    if host in {"deezer.com", "link.deezer.com"}:
-        return _parse_simple(_DEEZER_PATH, Provider.DEEZER, path, url)
     if host.endswith("bandcamp.com"):
         return _parse_bandcamp(host, path, url)
 
     raise UnsupportedMusicLinkError(
         "Link must be a song, album or playlist from Spotify, Apple Music, "
-        "YouTube Music, SoundCloud, TIDAL, Deezer or Bandcamp."
+        "YouTube Music, SoundCloud or Bandcamp."
     )
 
 
@@ -212,7 +215,7 @@ def _parse_youtube(host: str, path: str, query: str, url: str) -> MusicLink:
         list_id = params["list"][0]
         return MusicLink(
             Provider.YOUTUBE_MUSIC,
-            ItemType.PLAYLIST,
+            ItemType.ALBUM if _is_album(list_id) else ItemType.PLAYLIST,
             list_id,
             f"https://music.youtube.com/playlist?list={list_id}",
         )
@@ -245,40 +248,26 @@ def _parse_bandcamp(host: str, path: str, url: str) -> MusicLink:
     return MusicLink(Provider.BANDCAMP, item_type, f"{host}/{kind}/{slug}", url)
 
 
-def _parse_simple(
-    pattern: re.Pattern[str], provider: Provider, path: str, url: str
-) -> MusicLink:
-    match = pattern.match(path)
-    if not match:
-        raise UnsupportedMusicLinkError(
-            f"{PROVIDER_DISPLAY_NAMES[provider]} link must point at a track, "
-            "album or playlist."
-        )
-    kind, item_id = match.groups()
-    return MusicLink(provider, ItemType(kind), item_id, url)
-
-
 # ── Metadata ──────────────────────────────────────────────────────────────────
 
 _OEMBED_ENDPOINTS = {
     Provider.SPOTIFY: "https://open.spotify.com/oembed",
     Provider.SOUNDCLOUD: "https://soundcloud.com/oembed",
     Provider.YOUTUBE_MUSIC: "https://www.youtube.com/oembed",
-    Provider.DEEZER: "https://api.deezer.com/oembed",
 }
 
 _OG_TAG = re.compile(
-    r'<meta[^>]+(?:property|name)=["\']og:(title|image|audio)["\'][^>]*'
+    r'<meta[^>]+(?:property|name)=["\']og:(title|image|audio|video)["\'][^>]*'
     r'content=["\']([^"\']+)["\']',
     re.IGNORECASE,
 )
 _OG_TAG_REVERSED = re.compile(
     r'<meta[^>]+content=["\']([^"\']+)["\'][^>]*(?:property|name)=["\']og:'
-    r'(title|image|audio)["\']',
+    r'(title|image|audio|video)["\']',
     re.IGNORECASE,
 )
 
-_OG_SCRAPE_PROVIDERS = {Provider.APPLE_MUSIC, Provider.TIDAL, Provider.BANDCAMP}
+_OG_SCRAPE_PROVIDERS = {Provider.APPLE_MUSIC, Provider.BANDCAMP}
 
 _MAX_HTML_BYTES = 200_000
 
@@ -330,7 +319,42 @@ def _fetch_opengraph(link: MusicLink) -> MusicMetadata:
         response = client.get(link.url)
         response.raise_for_status()
 
-    return parse_opengraph(response.text[:_MAX_HTML_BYTES])
+    page = response.text[:_MAX_HTML_BYTES]
+    metadata = parse_opengraph(page)
+    if link.provider is Provider.BANDCAMP:
+        metadata.embed_url = bandcamp_player(page)
+    return metadata
+
+
+_BANDCAMP_PLAYER_ID = re.compile(r"/EmbeddedPlayer/(?:v=2/)?(track|album)=(\d+)")
+_BANDCAMP_PROPERTIES = re.compile(
+    r'<meta[^>]+name=["\']bc-page-properties["\'][^>]*content=["\']([^"\']+)["\']',
+    re.IGNORECASE,
+)
+
+
+def bandcamp_player(page: str) -> Optional[str]:
+    """
+    Bandcamp's player for the track or album a page shows. It needs the numeric
+    id, which only the page has: in its og:video player or its page properties.
+    """
+    kind = item_id = None
+    video = parse_opengraph(page).embed_url or ""
+    if match := _BANDCAMP_PLAYER_ID.search(video):
+        kind, item_id = match.groups()
+    elif match := _BANDCAMP_PROPERTIES.search(page):
+        try:
+            properties = json.loads(html_entities.unescape(match.group(1)))
+        except ValueError:
+            return None
+        kind = {"t": "track", "a": "album"}.get(properties.get("item_type"))
+        item_id = properties.get("item_id")
+    if not kind or not str(item_id).isdigit():
+        return None
+    return (
+        f"https://bandcamp.com/EmbeddedPlayer/{kind}={item_id}"
+        "/size=large/tracklist=false/artwork=small/"
+    )
 
 
 def parse_opengraph(html: str) -> MusicMetadata:
@@ -355,7 +379,49 @@ def parse_opengraph(html: str) -> MusicMetadata:
         artist_name=artist,
         artwork_url=tags.get("image"),
         preview_url=tags.get("audio"),
+        embed_url=tags.get("video"),
     )
+
+
+def embed_url(url: str, scraped: Optional[str] = None) -> Optional[str]:
+    """
+    The service's own embeddable player for ``url``, if it has one.
+
+    ``scraped`` is the player :func:`bandcamp_player` found on a Bandcamp page;
+    only Bandcamp's own player is accepted from it.
+    """
+    try:
+        link = parse_music_url(url)
+    except UnsupportedMusicLinkError:
+        return None
+
+    item_id = link.provider_item_id
+    if link.provider is Provider.SPOTIFY and link.url.startswith("https://open.spotify.com/"):
+        return f"https://open.spotify.com/embed/{link.item_type.value}/{item_id}"
+    if link.provider is Provider.APPLE_MUSIC:
+        parsed = urlparse(link.url)
+        song = parse_qs(parsed.query).get("i")
+        query = f"?i={song[0]}" if song else ""
+        return f"https://embed.music.apple.com{parsed.path}{query}"
+    # YouTube Music has no player of its own to embed, and YouTube's video
+    # player refuses many songs outside YouTube; the app draws its card instead.
+    if link.provider is Provider.SOUNDCLOUD:
+        # The artwork-led player; the classic one crams its waveform on a phone.
+        return "https://w.soundcloud.com/player/?" + urlencode({
+            "url": f"https://soundcloud.com/{item_id}",
+            "visual": "true",
+            "hide_related": "true",
+            "show_comments": "false",
+            "show_reposts": "false",
+            "show_teaser": "false",
+        })
+    if (
+        link.provider is Provider.BANDCAMP
+        and scraped
+        and scraped.startswith("https://bandcamp.com/EmbeddedPlayer/")
+    ):
+        return scraped
+    return None
 
 
 def fallback_title(link: MusicLink) -> str:
@@ -375,3 +441,420 @@ def fallback_title(link: MusicLink) -> str:
         return slug.title()[:300]
 
     return f"{PROVIDER_DISPLAY_NAMES[link.provider]} {link.item_type.value}"
+
+
+# ── Cross-provider links ──────────────────────────────────────────────────────
+#
+# The item's own service describes it (title, artist, length), then the
+# listener's service is searched for it. A candidate is only accepted when its
+# own metadata agrees, so a doubtful match reads as "not available" instead of
+# opening the wrong song. Apple's free iTunes API has no ISRC lookup, so title,
+# artist and length are what every direction can compare.
+
+_ITUNES_API = "https://itunes.apple.com"
+_SPOTIFY_API = "https://api.spotify.com/v1"
+_SPOTIFY_TOKEN_URL = "https://accounts.spotify.com/api/token"
+
+# Services don't agree on track lengths to the millisecond; edits and live takes
+# differ by far more.
+_DURATION_TOLERANCE_MS = 5000
+# rapidfuzz similarity (0-100) of the normalised titles and artist names.
+_MIN_SIMILARITY = 90
+
+# Songs and albums exist on every service. Playlists and artist pages are
+# specific to one, so they can't be shared.
+SHAREABLE_TYPES = {ItemType.TRACK, ItemType.ALBUM}
+
+_spotify_token: Optional[tuple[str, float]] = None  # (token, expires at)
+_ytmusic_client: Optional[YTMusic] = None
+
+
+class LinkResolutionError(RuntimeError):
+    """The lookup failed for now (network, timeout, rate limit); try again later."""
+
+
+def can_translate(source: str, target: str, item_type: str) -> bool:
+    """Whether an item on ``source`` can have a reliable equivalent on ``target``."""
+    try:
+        providers = {Provider(source), Provider(target)}
+        kind = ItemType(item_type)
+    except ValueError:
+        return False
+    return kind in SHAREABLE_TYPES and providers <= _CATALOGUES.keys()
+
+
+def resolve_link(
+    url: str, target: Provider, known: Optional[MusicMetadata] = None
+) -> Optional[str]:
+    """
+    The same song or album on ``target``, or None when it has no verified match.
+
+    ``known`` is what the post already says about it (title, artist); it's used
+    when the item's own service can't describe it.
+
+    Raises :class:`LinkResolutionError` when the answer is unknown for now.
+    """
+    if not settings.enable_link_metadata:
+        raise LinkResolutionError("Link lookups are disabled (ENABLE_LINK_METADATA).")
+
+    try:
+        link = parse_music_url(url)
+    except UnsupportedMusicLinkError:
+        return None
+    if not can_translate(link.provider.value, target.value, link.item_type.value):
+        return None
+
+    try:
+        with _client() as client:
+            lookup, _ = _CATALOGUES[link.provider]
+            source = lookup(client, link)
+            if not _describes(source):
+                logger.info(
+                    "%s doesn't know %s; using the post's title", link.provider, url
+                )
+                source = known
+            if not _describes(source):
+                logger.info("Can't match %s: nothing says what it is", url)
+                return None
+            _, search = _CATALOGUES[target]
+            candidates = search(client, link.item_type, source)
+    except httpx.HTTPStatusError as exc:
+        raise LinkResolutionError(
+            f"{exc.request.url.host} answered {exc.response.status_code}: "
+            f"{exc.response.text[:300]}"
+        ) from exc
+    except httpx.HTTPError as exc:
+        raise LinkResolutionError(f"Music service unreachable: {exc!r}") from exc
+    except (ValueError, KeyError, TypeError, AttributeError) as exc:
+        raise LinkResolutionError(f"Unexpected answer: {exc!r}") from exc
+
+    match = best_match(source, link.item_type, candidates)
+    if match is None:
+        logger.info(
+            "No %s match for %s (%r by %r, %s ms). Candidates: %s",
+            target.value, url, source.title, source.artist_name, source.duration_ms,
+            [(c.title, c.artist_name, c.duration_ms) for _, c in candidates[:5]],
+        )
+        return None
+    return match.url
+
+
+def _describes(metadata: Optional[MusicMetadata]) -> bool:
+    return bool(metadata and metadata.title and metadata.artist_name)
+
+
+def find_link(
+    provider: Provider, kind: ItemType, title: str, artist: str
+) -> Optional[str]:
+    """``title`` by ``artist`` on ``provider``, found by searching its catalogue."""
+    reference = MusicMetadata(title=title, artist_name=artist)
+    _, search = _CATALOGUES[provider]
+    with _client() as client:
+        match = best_match(reference, kind, search(client, kind, reference))
+    return match.url if match else None
+
+
+def best_match(
+    source: MusicMetadata,
+    kind: ItemType,
+    candidates: list[tuple[MusicLink, MusicMetadata]],
+) -> Optional[MusicLink]:
+    """The candidate that is the same music as ``source``, if any."""
+    scored = [
+        (score, link, metadata)
+        for link, metadata in candidates
+        if link.item_type is kind and (score := _similarity(source, metadata))
+    ]
+    # The same recording is often on an album and a compilation; the closest
+    # title, then the closest length, wins.
+    length = source.duration_ms or 0
+    scored.sort(key=lambda match: (-match[0], abs((match[2].duration_ms or 0) - length)))
+    return scored[0][1] if scored else None
+
+
+def _get_json(client: httpx.Client, url: str, *, lookup: bool = False, **kwargs) -> Any:
+    """GET ``url``. For a lookup by id, None when the service doesn't know it."""
+    response = client.get(url, **kwargs)
+    if lookup and response.status_code in {400, 404}:
+        return None
+    response.raise_for_status()
+    return response.json()
+
+
+# Apple Music, through the public iTunes Search API.
+
+
+def _itunes_entry(item: dict[str, Any]) -> tuple[MusicLink, MusicMetadata]:
+    is_track = item.get("wrapperType") == "track"
+    link = parse_music_url(item["trackViewUrl" if is_track else "collectionViewUrl"])
+    return link, MusicMetadata(
+        title=item.get("trackName" if is_track else "collectionName"),
+        artist_name=item.get("artistName"),
+        duration_ms=item.get("trackTimeMillis") if is_track else None,
+    )
+
+
+def _itunes_lookup(client: httpx.Client, link: MusicLink) -> Optional[MusicMetadata]:
+    storefront = re.match(r"^/([a-z]{2})/", urlparse(link.url).path)
+    payload = _get_json(
+        client,
+        f"{_ITUNES_API}/lookup",
+        lookup=True,
+        params={
+            "id": link.provider_item_id,
+            "country": storefront.group(1) if storefront else "us",
+        },
+    )
+    results = (payload or {}).get("results") or []
+    return _itunes_entry(results[0])[1] if results else None
+
+
+def _itunes_search(
+    client: httpx.Client, kind: ItemType, source: MusicMetadata
+) -> list[tuple[MusicLink, MusicMetadata]]:
+    payload = _get_json(
+        client,
+        f"{_ITUNES_API}/search",
+        params={
+            "term": f"{_primary_artist(source)} {_plain_title(source.title)}",
+            "entity": "song" if kind is ItemType.TRACK else "album",
+            "country": "us",
+            "limit": 25,
+        },
+    )
+    return [_itunes_entry(item) for item in (payload or {}).get("results") or []]
+
+
+# Spotify, through the Web API with the app's own (client credentials) token.
+
+
+def _spotify_headers(client: httpx.Client) -> dict[str, str]:
+    global _spotify_token
+    if not (settings.spotify_client_id and settings.spotify_client_secret):
+        raise LinkResolutionError(
+            "Set SPOTIFY_CLIENT_ID and SPOTIFY_CLIENT_SECRET to match music on Spotify."
+        )
+    if _spotify_token is None or _spotify_token[1] <= time.monotonic():
+        response = client.post(
+            _SPOTIFY_TOKEN_URL,
+            data={"grant_type": "client_credentials"},
+            auth=(settings.spotify_client_id, settings.spotify_client_secret),
+        )
+        response.raise_for_status()
+        payload = response.json()
+        # Renewed a minute early so it never expires mid-lookup.
+        _spotify_token = (
+            payload["access_token"],
+            time.monotonic() + payload["expires_in"] - 60,
+        )
+    return {"Authorization": f"Bearer {_spotify_token[0]}"}
+
+
+def _spotify_entry(item: dict[str, Any]) -> tuple[MusicLink, MusicMetadata]:
+    return parse_music_url(item["external_urls"]["spotify"]), MusicMetadata(
+        title=item.get("name"),
+        artist_name=", ".join(artist["name"] for artist in item.get("artists") or []),
+        duration_ms=item.get("duration_ms"),
+    )
+
+
+def _spotify_lookup(client: httpx.Client, link: MusicLink) -> Optional[MusicMetadata]:
+    kind = "tracks" if link.item_type is ItemType.TRACK else "albums"
+    item = _get_json(
+        client,
+        f"{_SPOTIFY_API}/{kind}/{link.provider_item_id}",
+        lookup=True,
+        headers=_spotify_headers(client),
+    )
+    return _spotify_entry(item)[1] if item else None
+
+
+def _spotify_search(
+    client: httpx.Client, kind: ItemType, source: MusicMetadata
+) -> list[tuple[MusicLink, MusicMetadata]]:
+    field = "track" if kind is ItemType.TRACK else "album"
+    payload = _get_json(
+        client,
+        f"{_SPOTIFY_API}/search",
+        params={
+            "q": f"{_plain_title(source.title)} {_primary_artist(source)}",
+            "type": field,
+            "limit": 10,
+        },
+        headers=_spotify_headers(client),
+    )
+    items = ((payload or {}).get(f"{field}s") or {}).get("items") or []
+    return [_spotify_entry(item) for item in items if item]
+
+
+# YouTube Music, through ytmusicapi (it has no official API).
+
+
+def _ytmusic() -> YTMusic:
+    global _ytmusic_client
+    if _ytmusic_client is None:
+        session = requests.Session()
+        session.request = functools.partial(  # type: ignore[method-assign]
+            session.request, timeout=settings.link_metadata_timeout_seconds
+        )
+        _ytmusic_client = YTMusic(requests_session=session)
+    return _ytmusic_client
+
+
+def _artists_text(item: dict[str, Any]) -> Optional[str]:
+    names = [artist["name"] for artist in item.get("artists") or [] if artist.get("name")]
+    return ", ".join(names) or item.get("artist")
+
+
+def _youtube_lookup(_client: httpx.Client, link: MusicLink) -> Optional[MusicMetadata]:
+    yt = _ytmusic()
+    try:
+        if link.item_type is ItemType.TRACK:
+            details = yt.get_song(link.provider_item_id).get("videoDetails")
+            if not details:
+                return None
+            # "The Beatles - Topic", "RickAstleyVEVO": the channel stands for the artist.
+            artist = re.sub(r"\s*-\s*Topic$|VEVO$", "", details.get("author") or "")
+            # Only audio tracks run as long as the release; music videos add intros.
+            is_track = details.get("musicVideoType") == "MUSIC_VIDEO_TYPE_ATV"
+            seconds = details.get("lengthSeconds")
+            return MusicMetadata(
+                title=_without_artist(details.get("title"), artist),
+                artist_name=artist,
+                duration_ms=int(seconds) * 1000 if is_track and seconds else None,
+            )
+        browse_id = yt.get_album_browse_id(link.provider_item_id)
+        if not browse_id:
+            return None
+        album = yt.get_album(browse_id)
+        return MusicMetadata(title=album.get("title"), artist_name=_artists_text(album))
+    except Exception as exc:  # noqa: BLE001 - an unofficial API fails in many ways
+        raise LinkResolutionError(f"YouTube Music: {exc!r}") from exc
+
+
+def _is_album(playlist_id: Optional[str]) -> bool:
+    # YouTube Music albums are playlists whose id starts with OLAK5uy_.
+    return (playlist_id or "").startswith("OLAK5uy_")
+
+
+def _youtube_search(
+    _client: httpx.Client, kind: ItemType, source: MusicMetadata
+) -> list[tuple[MusicLink, MusicMetadata]]:
+    query = f"{_primary_artist(source)} {_plain_title(source.title)}"
+    try:
+        results = _ytmusic().search(
+            query, filter="songs" if kind is ItemType.TRACK else "albums", limit=10
+        )
+    except Exception as exc:  # noqa: BLE001 - an unofficial API fails in many ways
+        raise LinkResolutionError(f"YouTube Music: {exc!r}") from exc
+
+    candidates = []
+    for item in results:
+        if kind is ItemType.TRACK and item.get("videoId"):
+            url = f"https://music.youtube.com/watch?v={item['videoId']}"
+            seconds = item.get("duration_seconds")
+            duration_ms = seconds * 1000 if seconds else None
+        elif kind is ItemType.ALBUM and _is_album(item.get("playlistId")):
+            url = f"https://music.youtube.com/playlist?list={item['playlistId']}"
+            duration_ms = None
+        else:
+            continue
+        candidates.append((
+            parse_music_url(url),
+            MusicMetadata(
+                title=item.get("title"),
+                artist_name=_artists_text(item),
+                duration_ms=duration_ms,
+            ),
+        ))
+    return candidates
+
+
+# provider: (describe an item, search for one like it)
+_CATALOGUES = {
+    Provider.SPOTIFY: (_spotify_lookup, _spotify_search),
+    Provider.APPLE_MUSIC: (_itunes_lookup, _itunes_search),
+    Provider.YOUTUBE_MUSIC: (_youtube_lookup, _youtube_search),
+}
+
+# The services a listener can pick: the ones music can be matched into.
+NATIVE_PROVIDERS = tuple(_CATALOGUES)
+
+
+# ── Matching ──────────────────────────────────────────────────────────────────
+
+_FEATURING = re.compile(
+    r"[(\[]\s*(?:feat|ft|featuring|with)\b[^)\]]*[)\]]|\s-\s(?:feat|ft)\b.*$",
+    re.IGNORECASE,
+)
+# A remaster is the same recording. Spotify tags it in the title ("Come Together
+# - Remastered 2009"); Apple Music usually doesn't.
+_REMASTER = re.compile(
+    r"\s(?:-\s|[(\[])(?:\d{4}\s)?(?:digital\s)?remaster(?:ed)?(?:\s\d{4})?"
+    r"(?:\sversion)?[)\]]?$",
+    re.IGNORECASE,
+)
+# What YouTube adds to a video's title.
+_VIDEO_NOISE = re.compile(
+    r"\s*[(\[](?:(?:official\s+)?(?:hd\s+)?(?:music\s+|lyric\s+)?"
+    r"(?:video|audio|visuali[sz]er|lyrics)(?:\s+hd)?|hd|hq|4k)[)\]]",
+    re.IGNORECASE,
+)
+_ARTIST_SEPARATORS = re.compile(
+    r"[,&;/+]|\s(?:feat\.?|ft\.?|featuring|with|and|x)\s", re.IGNORECASE
+)
+
+
+def _plain_title(title: Optional[str]) -> str:
+    """The title without "feat." credits, remaster tags or video labels."""
+    title = _VIDEO_NOISE.sub("", _FEATURING.sub("", title or "")).strip()
+    return _REMASTER.sub("", title)
+
+
+def _without_artist(title: Optional[str], artist: str) -> str:
+    """ "Nirvana - Smells Like Teen Spirit" -> "Smells Like Teen Spirit". """
+    head, separator, tail = (title or "").partition(" - ")
+    similarity = fuzz.ratio(_normalize(head), _normalize(artist)) if artist else 0
+    if separator and similarity >= _MIN_SIMILARITY:
+        return tail
+    return title or ""
+
+
+def _primary_artist(metadata: MusicMetadata) -> str:
+    return _ARTIST_SEPARATORS.split(metadata.artist_name or "")[0].strip()
+
+
+def _normalize(text: str) -> str:
+    """Case, accents, punctuation, "&"/"and", "feat." credits, remaster tags and
+    video labels don't make a different song."""
+    text = unicodedata.normalize("NFKD", _plain_title(text).replace("&", " and "))
+    return "".join(char for char in text.casefold() if char.isalnum())
+
+
+def _artists(name: Optional[str]) -> list[str]:
+    return [
+        artist
+        for artist in map(_normalize, _ARTIST_SEPARATORS.split(name or ""))
+        if artist
+    ]
+
+
+def _similarity(a: MusicMetadata, b: MusicMetadata) -> float:
+    """How alike two titles are (0 when a and b aren't the same music): close
+    titles, an artist in common and, when both are known, the same length."""
+    title = _normalize(a.title or "")
+    if not title:
+        return 0
+    score = fuzz.ratio(title, _normalize(b.title or ""))
+    if score < _MIN_SIMILARITY:
+        return 0
+    if not any(
+        fuzz.ratio(x, y) >= _MIN_SIMILARITY
+        for x in _artists(a.artist_name)
+        for y in _artists(b.artist_name)
+    ):
+        return 0
+    if a.duration_ms and b.duration_ms:
+        if abs(a.duration_ms - b.duration_ms) > _DURATION_TOLERANCE_MS:
+            return 0
+    return score
